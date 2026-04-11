@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-mes"
+version = "0.1.0"
+description = "AgentMES — manufacturing execution system for autonomous agents (Blaxel × Codex × Redis hackathon, Wordware HQ, 2026-04-11)"
+authors = [{name = "Ben"}]
+requires-python = ">=3.12"
+dependencies = [
+    "rich>=14",
+    "pydantic>=2",
+    "httpx>=0.28",
+    "typer>=0.24",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+agent-mes = "agent_mes.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["agent_mes*"]
+exclude = ["tests*", "docs*", "research*", "recordings*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
