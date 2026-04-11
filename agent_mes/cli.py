@@ -26,11 +26,24 @@ from agent_mes.ui.dashboard import Dashboard
 app = typer.Typer(no_args_is_help=True, help="AgentMES — autonomous agent MES with terminal kanban")
 
 
+_SIMPLE_HINTS = ("draft", "postmortem", "email", "summary", "report", "send", "notify")
+
+
+def _pre_classify(raw_text: str) -> TicketType:
+    """Pre-classify the ticket so the initial card shows the right icon
+    BEFORE Plan stage runs. PlanStage re-classifies idempotently.
+    """
+    text_lower = raw_text.lower()
+    if any(k in text_lower for k in _SIMPLE_HINTS):
+        return TicketType.SIMPLE
+    return TicketType.CODE
+
+
 def _new_task(ticket_id: str) -> MESTask:
     f = FAKE_SLACK[ticket_id]
     return MESTask(
         id=ticket_id,
-        type=TicketType.SIMPLE,  # gets reclassified by PlanStage
+        type=_pre_classify(f["raw_text"]),
         intent="",
         raw_input=f["raw_text"],
         requester=f["requester"],
