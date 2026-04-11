@@ -12,6 +12,14 @@
 
 **Research:** docs/specs/agentmes-research.md
 
+## Data layer — separate package
+- Context data lives in [`benikigai/plushpalace-world`](https://github.com/benikigai/plushpalace-world) — 10 Pydantic entity types (Person, Product, Vendor, Repository, Incident, Postmortem, CodeChange, Customer, Email, Lesson), 53 seed entities in YAML
+- Two backends share the same `ContextStore` Protocol: `StubStore` (in-memory) and `RedisStore` (Redis Stack)
+- Parity test asserts stub and Redis return identical results for the same queries
+- Fictional company: **PlushPalace Co.** — DTC plushies, CEO Mark Chen, viral hero SKU "Atticus the Axolotl", Shenzhen factory partner
+- Two "smoking gun" postmortems (pm-2026-02-14 rate limit, pm-2025-11-22 mocked flaky test) have `status=open` action items — these are what Stage 5 Review catches as structural drift
+- `AGENTMES_USE_REDIS=1` flips AgentMES from stub to real Redis Stack
+
 ## Architecture summary
 - 7 vertical stage columns (Plan, Design, Build, Test, Review, Document, Deploy) — cards flow left to right
 - **Receipts embedded INSIDE the card** — each StageEvent appends a line; the card body IS the audit trail

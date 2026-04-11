@@ -5,11 +5,12 @@
 - [ ] Task 2: agent_mes/schema.py — Pydantic models — MODERATE
 - [ ] Task 3: agent_mes/interfaces.py — Protocol classes — SIMPLE
 - [ ] Task 4: agent_mes/integrations/stubs/redis_memory.py — MODERATE
-- [ ] Task 5: agent_mes/integrations/stubs/context_retriever.py — MODERATE
+- [ ] Task 5: agent_mes/integrations/stubs/context_retriever.py — thin wrapper over plushpalace.stub_store.StubStore — SIMPLE
 - [ ] Task 6: agent_mes/integrations/stubs/blaxel.py — COMPLEX
 - [ ] Task 7: agent_mes/integrations/wordware.py — stub + real flag — SIMPLE
 - [ ] Task 8: agent_mes/integrations/codex.py — asciinema replay player — MODERATE
-- [ ] Task 9: agent_mes/demo/* — fixtures (fake_slack, seed_memories, poison_payload, seed_entities) — SIMPLE
+- [ ] Task 9: agent_mes/demo/* — fixtures slim down to demo-control only (cast file path, speed multiplier, output dir); all entity data lives in plushpalace-world — SIMPLE
+- [ ] Task 9b: agent_mes/integrations/real/context_retriever.py — thin wrapper over plushpalace.redis_store.RedisStore, gated by AGENTMES_USE_REDIS env var — SIMPLE
 - [ ] Task 10: agent_mes/stages/base.py — BaseStage abstract — SIMPLE
 - [ ] Task 11: agent_mes/stages/plan.py — Plan stage — SIMPLE
 - [ ] Task 12: agent_mes/stages/design.py — Design stage (3 sub-agents) — MODERATE
@@ -23,4 +24,4 @@
 - [ ] Task 20: agent_mes/ui/dashboard.py — live dashboard — COMPLEX
 - [ ] Task 21: agent_mes/cli.py + __main__.py — CLI entrypoint — SIMPLE
 - [ ] Task 22: tests/test_smoke.py — end-to-end smoke test — SIMPLE
-- [ ] Task 23: README.md + polish — SIMPLE
+- [x] Task 23: README.md + polish — SIMPLE (done ahead of /yolo)
