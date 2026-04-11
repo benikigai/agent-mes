@@ -1,12 +1,16 @@
 """Heliograph fake company schema — fixtures for the StubContextRetriever.
 
-Includes the structural contradiction the Stage 5 drift catch surfaces:
-  - Incident inc_113 was a fix on /v1/login (the historical fact)
-  - Ticket  tkt_982 is about /v2/oauth (the current task)
+Includes the two structural facts the Stage 5 drift catches surface:
 
-The agent retrieves the seed memory ("we already fixed it") and the Context
-Retriever returns inc_113 with endpoint=/v1/login. The MISMATCH between the
-incident's endpoint and the new ticket's endpoint is the demo gold moment.
+  CODE-A trap: incident-2025-10-12 (six months ago) — record of the prior
+  flaky-test-mocking incident where mocking caused a prod failure two
+  weeks later. inc_226's fix_pr_url is the prior PR that mocked the test.
+
+  SIMPLE-A trap: incident-2026-02-14 — record of the prior incident with
+  the SAME root cause as inc_311 (the current incident-2026-04-09). Action
+  item AI-24 from inc_201 was "add deploy-pipeline validation gate" — never
+  implemented. The postmortem agent retrieves both incidents and the
+  Context Retriever flags the duplicate root cause.
 """
 
 from __future__ import annotations
@@ -63,16 +67,41 @@ USERS: list[dict[str, Any]] = [
 
 # ─── Incidents ──────────────────────────────────────────────────────────────
 INCIDENTS: list[dict[str, Any]] = [
-    # THE adversary incident: rate limiter fix on /v1/login (NOT /v2/oauth)
+    # ── ADVERSARY incidents (the demo gold) ──
+    # CODE-A trap: prior flaky-test mocking incident (6 months ago)
     {
-        "id": "inc_113",
+        "id": "inc_226",
+        "service_id": "svc_auth",
+        "endpoint": "/v1/oauth/refresh",
+        "summary": "test_oauth_token_refresh was mocked instead of fixed; race condition fired in prod 2 weeks later, ~14min outage during refresh storm",
+        "opened_at": _days_ago_ts(180),
+        "resolved_at": _days_ago_ts(166),
+        "fix_pr_url": "https://github.com/heliograph/auth/pull/389",
+        "root_cause": "race condition in token refresh path; was masked by a test mock instead of fixed",
+    },
+    # SIMPLE-A trap: prior outage with same root cause as the current incident
+    {
+        "id": "inc_201",
         "service_id": "svc_auth",
         "endpoint": "/v1/login",
-        "summary": "auth rate limiter bumped 100→500rpm on login endpoint",
-        "opened_at": _days_ago_ts(29),
-        "resolved_at": _days_ago_ts(28),
-        "fix_pr_url": "https://github.com/heliograph/auth/pull/447",
+        "summary": "auth-service down 18min — rate-limiter misconfig from deploy pipeline; action item AI-24 proposed deploy validation gate, never implemented",
+        "opened_at": _days_ago_ts(57),
+        "resolved_at": _days_ago_ts(57),
+        "fix_pr_url": "https://github.com/heliograph/auth/pull/431",
+        "root_cause": "rate-limiter misconfig propagated through deploy pipeline; no validation gate caught it",
     },
+    # SIMPLE-A subject: the current incident being post-mortemed
+    {
+        "id": "inc_311",
+        "service_id": "svc_auth",
+        "endpoint": "/v1/login",
+        "summary": "auth-service down 28min on 2026-04-09 14:30 PDT — rate-limiter misconfig from morning deploy; same root cause as inc_201",
+        "opened_at": _days_ago_ts(2),
+        "resolved_at": _days_ago_ts(2),
+        "fix_pr_url": "https://github.com/heliograph/auth/pull/467",
+        "root_cause": "rate-limiter misconfig propagated through deploy pipeline; no validation gate caught it",
+    },
+    # ── Filler incidents ──
     {
         "id": "inc_101",
         "service_id": "svc_billing",
@@ -81,6 +110,7 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(60),
         "resolved_at": _days_ago_ts(59),
         "fix_pr_url": "https://github.com/heliograph/billing/pull/220",
+        "root_cause": "exponential backoff misconfigured",
     },
     {
         "id": "inc_102",
@@ -90,6 +120,7 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(120),
         "resolved_at": _days_ago_ts(119),
         "fix_pr_url": "https://github.com/heliograph/notify/pull/88",
+        "root_cause": "cert renewal cron failed silently",
     },
     {
         "id": "inc_103",
@@ -99,6 +130,7 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(90),
         "resolved_at": _days_ago_ts(88),
         "fix_pr_url": "https://github.com/heliograph/search/pull/512",
+        "root_cause": "reindex job not throttled",
     },
     {
         "id": "inc_104",
@@ -108,6 +140,7 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(75),
         "resolved_at": _days_ago_ts(73),
         "fix_pr_url": "https://github.com/heliograph/auth/pull/401",
+        "root_cause": "error handler logged tokens",
     },
     {
         "id": "inc_105",
@@ -117,6 +150,7 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(50),
         "resolved_at": _days_ago_ts(49),
         "fix_pr_url": "https://github.com/heliograph/billing/pull/231",
+        "root_cause": "decimal handling assumed 2 places",
     },
     {
         "id": "inc_106",
@@ -126,6 +160,7 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(40),
         "resolved_at": _days_ago_ts(39),
         "fix_pr_url": "https://github.com/heliograph/notify/pull/95",
+        "root_cause": "no batching on marketing path",
     },
     {
         "id": "inc_107",
@@ -135,15 +170,17 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(20),
         "resolved_at": _days_ago_ts(19),
         "fix_pr_url": "https://github.com/heliograph/search/pull/520",
+        "root_cause": "index swap forgot to bump cache version",
     },
     {
         "id": "inc_108",
         "service_id": "svc_auth",
         "endpoint": "/v1/sso",
-        "summary": "okta SAML response signature validation regression",
+        "summary": "okta SAML signature validation regression",
         "opened_at": _days_ago_ts(15),
         "resolved_at": _days_ago_ts(14),
         "fix_pr_url": "https://github.com/heliograph/auth/pull/455",
+        "root_cause": "library upgrade dropped a default flag",
     },
     {
         "id": "inc_109",
@@ -153,45 +190,27 @@ INCIDENTS: list[dict[str, Any]] = [
         "opened_at": _days_ago_ts(8),
         "resolved_at": _days_ago_ts(7),
         "fix_pr_url": "https://github.com/heliograph/billing/pull/240",
-    },
-    {
-        "id": "inc_110",
-        "service_id": "svc_notify",
-        "endpoint": "/v1/sms",
-        "summary": "twilio number rotation broke status callbacks",
-        "opened_at": _days_ago_ts(35),
-        "resolved_at": _days_ago_ts(34),
-        "fix_pr_url": "https://github.com/heliograph/notify/pull/100",
-    },
-    {
-        "id": "inc_111",
-        "service_id": "svc_search",
-        "endpoint": "/v1/query",
-        "summary": "query parser crash on unicode normalization edge case",
-        "opened_at": _days_ago_ts(5),
-        "resolved_at": _days_ago_ts(4),
-        "fix_pr_url": "https://github.com/heliograph/search/pull/525",
+        "root_cause": "missing idempotency key check",
     },
 ]
 
 # ─── Tickets ────────────────────────────────────────────────────────────────
 TICKETS: list[dict[str, Any]] = [
-    # THE current ticket — about /v2/oauth (different endpoint than inc_113)
     {
         "id": "tkt_982",
         "requester_id": "usr_sarah",
         "service_id": "svc_auth",
         "priority": "P2",
         "status": "open",
-        "body": "rate-limiting on /v2/oauth too strict — customers reporting 429s on token refresh",
+        "body": "test_oauth_token_refresh is flaky on CI — failing ~10% with timing issues",
     },
     {
-        "id": "tkt_950",
+        "id": "tkt_983",
         "requester_id": "usr_marcus",
-        "service_id": "svc_billing",
-        "priority": "P3",
+        "service_id": "svc_auth",
+        "priority": "P1",
         "status": "open",
-        "body": "incorrect tax calculation on EU invoices",
+        "body": "draft postmortem for incident-2026-04-09 (auth-service rate-limiter outage)",
     },
     {
         "id": "tkt_961",

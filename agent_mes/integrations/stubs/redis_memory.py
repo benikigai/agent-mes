@@ -3,6 +3,10 @@
 Returns deterministic seeded data so the demo hits the same beats every
 rehearsal. When Vish's real impl lands on vish/redis-blaxel, swap this
 import in cli.py for one line — function shapes are identical.
+
+Two adversary memories drive the demo's Stage 5 catches:
+  - mem_0001 (CODE-A): "we mocked this test 6mo ago — caused prod incident"
+  - mem_0002 (SIMPLE-A): "incident-2026-02-14 had the same root cause"
 """
 
 from __future__ import annotations
@@ -22,7 +26,6 @@ class StubRedisMemory:
     """Implements RedisMemoryProtocol with fixture-driven returns."""
 
     def __init__(self) -> None:
-        global _LESSON_COUNTER
         self._counter = _LESSON_COUNTER
         MEMORY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -30,10 +33,9 @@ class StubRedisMemory:
         self, query: str, session_id: str, limit: int = 3
     ) -> list[dict[str, Any]]:
         """Return up to `limit` seed memories whose topics or text match
-        the query string. Always returns the adversary memory if the query
-        mentions auth/rate so Stage 5 has something to refute."""
+        the query string. Always surfaces the right adversary memory for
+        the two demo scenarios."""
         query_lower = query.lower()
-        # Score memories by simple substring overlap
         scored: list[tuple[int, dict[str, Any]]] = []
         for mem in SEED_MEMORIES:
             score = 0
@@ -48,37 +50,56 @@ class StubRedisMemory:
         scored.sort(key=lambda x: x[0], reverse=True)
         results = [mem for _, mem in scored[:limit]]
 
-        # Guarantee the adversary memory shows up for auth/rate queries
-        if any(k in query_lower for k in ("auth", "rate", "limit", "oauth")):
-            adversary = next(
-                m for m in SEED_MEMORIES if m["id"] == "mem_0001"
-            )
+        # Force the adversary memory for CODE-A (flaky test scenario)
+        if any(k in query_lower for k in ("flaky", "test_oauth", "race", "mock")):
+            adversary = next(m for m in SEED_MEMORIES if m["id"] == "mem_0001")
             if adversary not in results:
                 results = [adversary] + results[: limit - 1]
 
-        # If still empty (e.g. query=""), fall back to first 3 memories
+        # Force the adversary memory for SIMPLE-A (postmortem scenario)
+        if any(k in query_lower for k in ("postmortem", "incident", "rate-limit", "rate limit", "outage")):
+            adversary = next(m for m in SEED_MEMORIES if m["id"] == "mem_0002")
+            if adversary not in results:
+                results = [adversary] + results[: limit - 1]
+
+        # Fall back to first 3 memories so empty queries don't crash
         if not results:
             results = SEED_MEMORIES[:limit]
 
         return results
 
     async def cross_check(self, claim: str) -> dict[str, Any]:
-        """Return a contradiction record if the claim looks like the
-        adversary auth-rate-limiter claim; else return no-contradiction."""
-        claim_lower = claim.lower()
-        if "auth rate limit" in claim_lower or ("rate limit" in claim_lower and "login" in claim_lower):
+        """Return a contradiction record for the two adversary scenarios."""
+        c = claim.lower()
+
+        # CODE-A: claim about mocking the flaky test
+        if "mock" in c and ("test" in c or "flaky" in c):
             return {
                 "contradicted": True,
                 "supporting": [],
                 "contradicting": [
                     {
                         "memory_id": "mem_0001",
-                        "endpoint_in_memory": "/v1/login",
-                        "endpoint_in_current_task": "/v2/oauth",
-                        "note": "previous fix was on a different endpoint",
+                        "prior_incident": "inc_226",
+                        "note": "mocking this test 6 months ago caused a prod incident two weeks later",
                     }
                 ],
             }
+
+        # SIMPLE-A: claim about the new incident being unique
+        if "incident" in c and ("rate" in c or "limiter" in c or "deploy" in c or "new" in c):
+            return {
+                "contradicted": True,
+                "supporting": [],
+                "contradicting": [
+                    {
+                        "memory_id": "mem_0002",
+                        "prior_incident": "inc_201",
+                        "note": "incident-2026-02-14 had the same root cause; AI-24 fix never deployed",
+                    }
+                ],
+            }
+
         return {"contradicted": False, "supporting": [], "contradicting": []}
 
     async def write_lesson(

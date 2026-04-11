@@ -14,32 +14,44 @@ async def test_query_entity_service():
 
 
 @pytest.mark.asyncio
-async def test_query_entity_incident_inc_113():
+async def test_query_entity_incident_inc_226_flaky_test_trap():
     ctx = StubContextRetriever()
-    inc = await ctx.query_entity("incident", "inc_113")
-    assert inc["endpoint"] == "/v1/login"
-    assert "rate limiter" in inc["summary"]
+    inc = await ctx.query_entity("incident", "inc_226")
+    assert "test_oauth_token_refresh" in inc["summary"]
+    assert "mocked" in inc["summary"].lower()
 
 
 @pytest.mark.asyncio
 async def test_list_related_incidents_for_auth():
     ctx = StubContextRetriever()
     incidents = await ctx.list_related("incident", {"service_id": "svc_auth"})
-    assert len(incidents) >= 3
-    assert any(i["id"] == "inc_113" for i in incidents)
+    assert any(i["id"] == "inc_226" for i in incidents)
+    assert any(i["id"] == "inc_201" for i in incidents)
+    assert any(i["id"] == "inc_311" for i in incidents)
 
 
 @pytest.mark.asyncio
-async def test_verify_claim_auth_rate_limit_drift():
+async def test_verify_claim_flaky_test_mock_drift():
     ctx = StubContextRetriever()
     result = await ctx.verify_claim(
-        "auth rate limiter was fixed on the login service last month",
+        "the flaky test should be mocked for now",
         entity_type="incident",
     )
     assert result["verified"] is False
-    assert result["actual"]["endpoint"] == "/v1/login"
-    assert "endpoint mismatch" in result["discrepancy"]
-    assert "/v2/oauth" in result["discrepancy"]
+    assert result["actual"]["incident_id"] == "inc_226"
+    assert "mocking" in result["discrepancy"].lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_claim_postmortem_drift():
+    ctx = StubContextRetriever()
+    result = await ctx.verify_claim(
+        "incident-2026-04-09 rate-limiter outage is a new root cause",
+        entity_type="incident",
+    )
+    assert result["verified"] is False
+    assert result["actual"]["incident_id"] == "inc_201"
+    assert "ai-24" in result["discrepancy"].lower()
 
 
 @pytest.mark.asyncio

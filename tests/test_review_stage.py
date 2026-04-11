@@ -13,24 +13,19 @@ os.environ["AGENTMES_AUTO_APPROVE"] = "1"
 
 
 @pytest.mark.asyncio
-async def test_review_catches_drift_for_tkt_001():
+async def test_review_catches_flaky_test_drift_for_tkt_001():
     stage = ReviewStage(redis=StubRedisMemory(), context=StubContextRetriever())
     task = MESTask(
         id="TKT-001",
         type=TicketType.CODE,
-        intent="raise the OAuth /v2 rate limit",
+        intent="fix flaky test test_oauth_token_refresh",
         raw_input="",
         requester="sarah",
         source="#bugs",
         memory_provenance=[
             MemoryProvenance(
-                text="we already fixed the auth rate limiter on the login service last month",
-                confidence=0.9,
-                source="agent_memory_seed",
-            ),
-            MemoryProvenance(
-                text="OAuth refresh tokens should be validated with leeway",
-                confidence=0.85,
+                text="we mocked this same test six months ago — followed by a prod incident",
+                confidence=0.92,
                 source="agent_memory_seed",
             ),
         ],
@@ -38,33 +33,33 @@ async def test_review_catches_drift_for_tkt_001():
     events = await stage.execute(task)
     drift_events = [e for e in events if e.metadata.get("status") == "DRIFT"]
     assert len(drift_events) == 1
-    assert "/v1/login" in drift_events[0].metadata["memory"]
-    # Confidence dropped
-    assert task.memory_provenance[0].confidence == 0.3
-    # Human gate fired
+    assert drift_events[0].metadata["prior_incident"] == "inc_226"
+    assert task.memory_provenance[0].confidence == 0.32  # rounded
     assert any(e.action == "approved" for e in events)
     assert task.human_gates[0].approved is True
 
 
 @pytest.mark.asyncio
-async def test_review_no_drift_for_tkt_002():
+async def test_review_catches_postmortem_drift_for_tkt_002():
+    """SIMPLE tickets ALSO fire drift now — postmortem deja vu beat."""
     stage = ReviewStage(redis=StubRedisMemory(), context=StubContextRetriever())
     task = MESTask(
         id="TKT-002",
         type=TicketType.SIMPLE,
-        intent="draft email",
+        intent="draft postmortem for incident-2026-04-09 rate-limiter outage",
         raw_input="",
         requester="marcus",
-        source="#announcements",
+        source="#incidents",
         memory_provenance=[
             MemoryProvenance(
-                text="incident emails land best when they lead with root cause",
-                confidence=0.88,
+                text="incident-2026-02-14 had the same root cause: rate-limiter misconfig from deploy",
+                confidence=0.95,
                 source="agent_memory_seed",
             ),
         ],
     )
     events = await stage.execute(task)
-    assert all(e.metadata.get("status") != "DRIFT" for e in events)
-    assert len(events) == 1
-    assert events[0].metadata["status"] == "PASS"
+    drift_events = [e for e in events if e.metadata.get("status") == "DRIFT"]
+    assert len(drift_events) == 1
+    assert drift_events[0].metadata["prior_incident"] == "inc_201"
+    assert any(e.action == "approved" for e in events)

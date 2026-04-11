@@ -1,15 +1,15 @@
 """Fake Slack messages used as Plan stage input fixtures.
 
-Two demo tickets:
-- TKT-001 (CODE)   : OAuth /v2 rate-limit fix that triggers the Stage 5 memory drift catch
-- TKT-002 (SIMPLE) : status update email about a recent incident
+Two demo tickets — both wired to land Redis Memory drift catches at Stage 5:
+
+- TKT-001 (CODE)   : flaky test fix that triggers a "we mocked it before" recall
+- TKT-002 (SIMPLE) : postmortem draft that triggers a "we've put out this fire before" recall
 
 Each entry maps a ticket id to:
-  raw_text       — the inbound message (what Wordware would compile)
+  raw_text       — the inbound message (what Wordware compiles)
   requester      — slack handle
   channel        — slack channel
   plan_payload   — what the Wordware stub returns from plan_from_slack
-                   (matches the dict-shape WordwarePlannerProtocol.plan_from_slack returns)
 """
 
 from __future__ import annotations
@@ -17,27 +17,28 @@ from __future__ import annotations
 from typing import Any
 
 FAKE_SLACK: dict[str, dict[str, Any]] = {
+    # ── CODE-A: Fix flaky test that blocks CI ────────────────────────────
     "TKT-001": {
         "raw_text": (
-            "hey can someone fix the oauth rate limit on /v2 — "
-            "customers are getting 429s on token refresh and the "
-            "/v2/oauth endpoint is way too aggressive. needs to be like /v1/login was."
+            "fix the flaky test test_oauth_token_refresh — it's been failing ~10% "
+            "of the time on CI for a week and blocking every PR. timing/race "
+            "condition somewhere in the refresh flow. needs a real fix not a mock."
         ),
         "requester": "sarah",
         "channel": "#bugs",
         "plan_payload": {
-            "intent": "raise the OAuth /v2 rate limit so token refresh stops 429ing",
+            "intent": "fix the flaky test test_oauth_token_refresh by addressing the underlying race condition",
             "acceptance_criteria": [
                 {
-                    "description": "rate limit on /v2/oauth raised to at least 500rpm",
-                    "machine_check": "pytest tests/auth/test_rate_limit.py -k oauth_v2",
+                    "description": "test passes 100 times in a row in the sandbox",
+                    "machine_check": "pytest tests/auth/test_oauth_token_refresh.py --count=100",
                 },
                 {
-                    "description": "no regression on /v1/login rate limit",
-                    "machine_check": "pytest tests/auth/test_rate_limit.py -k login_v1",
+                    "description": "fix touches the production code, not the test mock",
+                    "machine_check": "pytest tests/auth/test_oauth_token_refresh.py -k 'not mocked'",
                 },
                 {
-                    "description": "no outbound network calls",
+                    "description": "no outbound network calls during the test",
                     "machine_check": "pytest tests/auth/test_isolation.py",
                 },
             ],
@@ -48,30 +49,36 @@ FAKE_SLACK: dict[str, dict[str, Any]] = {
             },
         },
     },
+    # ── SIMPLE-A: Draft postmortem for last week's outage ────────────────
     "TKT-002": {
         "raw_text": (
-            "send a status update email to the team about the auth incident "
-            "from last night — keep it short, mention root cause + ETA, "
-            "use a calm tone."
+            "draft a postmortem for incident-2026-04-09 — auth-service went down "
+            "at 14:30 PDT for ~28 minutes. customers couldn't log in. root cause "
+            "looks like the rate-limiter misconfig from the deploy that morning. "
+            "need timeline, 5 whys, action items with owners + due dates."
         ),
         "requester": "marcus",
-        "channel": "#announcements",
+        "channel": "#incidents",
         "plan_payload": {
-            "intent": "draft a status-update email about the recent auth incident",
+            "intent": "draft postmortem for incident-2026-04-09 covering root cause, timeline, 5 whys, and action items",
             "acceptance_criteria": [
                 {
-                    "description": "email body under 200 words",
-                    "machine_check": "wc -w drafts/email-TKT-002.md",
+                    "description": "every action item has an owner and a due date",
+                    "machine_check": "agent-mes lint postmortem .demo/outputs/postmortem-TKT-002.md",
                 },
                 {
-                    "description": "tone is calm and informative",
-                    "machine_check": "agent-mes review tone drafts/email-TKT-002.md",
+                    "description": "no PII in customer-facing sections",
+                    "machine_check": "agent-mes scrub-pii .demo/outputs/postmortem-TKT-002.md",
+                },
+                {
+                    "description": "5 whys section has at least 5 levels",
+                    "machine_check": "grep -c '^Why' .demo/outputs/postmortem-TKT-002.md",
                 },
             ],
             "blast_radius": {
                 "allowed_paths": ["drafts/", ".demo/outputs/"],
                 "network_egress": False,
-                "max_cost_usd": 0.05,
+                "max_cost_usd": 0.10,
             },
         },
     },

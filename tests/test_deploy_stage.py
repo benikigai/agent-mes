@@ -15,7 +15,7 @@ async def test_deploy_code_dry_run_prints_gh_command():
     task = MESTask(
         id="TKT-001",
         type=TicketType.CODE,
-        intent="raise the OAuth /v2 rate limit",
+        intent="fix flaky test test_oauth_token_refresh",
         raw_input="",
         requester="sarah",
         source="#bugs",
@@ -32,16 +32,16 @@ async def test_deploy_code_dry_run_prints_gh_command():
 
 
 @pytest.mark.asyncio
-async def test_deploy_email_writes_file():
+async def test_deploy_postmortem_writes_file():
     stage = DeployStage(redis=StubRedisMemory(), dry_run=True)
     task = MESTask(
         id="TKT-002",
         type=TicketType.SIMPLE,
-        intent="draft email",
+        intent="draft postmortem",
         raw_input="",
         requester="marcus",
-        source="#announcements",
-        context_bundle={"email_body": "Hi team, status update follows."},
+        source="#incidents",
+        context_bundle={"email_body": "# Postmortem: incident-2026-04-09\nFull body here."},
     )
     events = await stage.execute(task)
     assert len(events) == 1
@@ -49,5 +49,7 @@ async def test_deploy_email_writes_file():
     assert e.artifacts[0].type == "email"
     out_path = Path(e.artifacts[0].ref)
     assert out_path.exists()
-    assert "status update" in out_path.read_text()
+    assert out_path.name.startswith("postmortem-")
+    assert "Postmortem" in out_path.read_text()
     assert task.status == "merged"
+    assert e.metadata["posted_to"] == "#incidents"

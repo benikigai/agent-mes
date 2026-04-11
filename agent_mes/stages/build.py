@@ -9,25 +9,55 @@ from agent_mes.schema import Artifact, MESTask, StageEnum, StageEvent, TicketTyp
 from agent_mes.stages.base import BaseStage
 
 
-EMAIL_TEMPLATE = """Subject: Update on the auth service incident
+POSTMORTEM_TEMPLATE = """# Postmortem: incident-2026-04-09
 
-Hi team,
+**Service:** auth-service
+**Date:** 2026-04-09
+**Time:** 14:30 PDT (28 minute outage)
+**Severity:** P1 — full login outage
+**Author:** marcus
 
-Quick status on the auth-service rate-limit incident from last night:
+## Summary
 
-ROOT CAUSE: rate limiter bucket on /v2/oauth was set to 100rpm, which
-caused token-refresh storms during peak hours and surfaced as 429 errors
-for customers using the new mobile client.
+At 14:30 PDT on 2026-04-09 the auth-service began returning 429 and 503
+responses on the `/v1/login` endpoint, blocking all customer logins for
+~28 minutes. Service was restored when the morning deploy was rolled back.
 
-CURRENT STATE: change is in review with the platform team. The fix raises
-the bucket to 500rpm to match the /v1/login parity we shipped last month.
+## Timeline
 
-ETA: deploy by EOD today. I'll send a follow-up confirming green metrics.
+- 09:14 PDT — morning deploy ships rate-limiter config change
+- 14:30 PDT — login traffic peaks, rate-limiter saturates
+- 14:32 PDT — first customer report in #incidents
+- 14:38 PDT — on-call paged, identifies the deploy as suspect
+- 14:51 PDT — rollback triggered
+- 14:58 PDT — service fully restored
 
-Let me know if you have questions.
+## Root Cause
 
-— marcus
+The morning deploy included a rate-limiter bucket size change that was
+applied uniformly across all endpoints. The login endpoint's organic
+traffic exceeds the new bucket size at peak hours.
+
+## 5 Whys
+
+Why did the service go down? Rate-limiter rejected legitimate login traffic.
+Why did the rate-limiter reject it? Bucket size was set too low for peak load.
+Why was the bucket size too low? Deploy applied a uniform value across endpoints.
+Why was a uniform value used? Config change wasn't validated against per-endpoint load profiles.
+Why wasn't there a validation gate? Action item AI-24 from inc_201 was never implemented.
+
+## Action Items
+
+| # | Item | Owner | Due |
+| - | ---- | ----- | --- |
+| AI-31 | Implement deploy-pipeline validation gate (resurrect AI-24) | sarah | 2026-04-18 |
+| AI-32 | Per-endpoint rate-limiter config tests in CI | jamie | 2026-04-25 |
+| AI-33 | Postmortem readout in eng all-hands | marcus | 2026-04-15 |
 """
+
+
+# Backwards-compat alias used by older imports/tests
+EMAIL_TEMPLATE = POSTMORTEM_TEMPLATE
 
 
 class BuildStage(BaseStage):
@@ -76,24 +106,28 @@ class BuildStage(BaseStage):
         return [event]
 
     async def _build_email(self, task: MESTask) -> list[StageEvent]:
-        word_count = len(EMAIL_TEMPLATE.split())
+        word_count = len(POSTMORTEM_TEMPLATE.split())
+        action_item_count = POSTMORTEM_TEMPLATE.count("| AI-")
+        why_count = POSTMORTEM_TEMPLATE.count("Why ")
         event = self._emit_event(
             task=task,
             agent=self.AGENT,
-            action="drafted email body",
+            action="assembled postmortem draft",
             metadata={
-                "recipient": "team@heliograph",
+                "channel": "#incidents",
                 "word_count": word_count,
+                "action_items": action_item_count,
+                "five_whys": why_count,
                 "status": "PASS",
             },
             artifacts=[
                 Artifact(
                     type="email",
-                    ref="drafts/email-TKT-002.md",
-                    summary=f"{word_count} words",
+                    ref="drafts/postmortem-TKT-002.md",
+                    summary=f"{word_count} words / {action_item_count} action items",
                 )
             ],
         )
-        # Stash the email body on the task so Deploy can write it
-        task.context_bundle["email_body"] = EMAIL_TEMPLATE
+        # Stash the postmortem body on the task so Deploy can write it
+        task.context_bundle["email_body"] = POSTMORTEM_TEMPLATE
         return [event]
