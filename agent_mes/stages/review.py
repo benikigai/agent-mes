@@ -9,6 +9,7 @@ import asyncio
 import os
 from typing import Awaitable, Callable
 
+from agent_mes.artifacts import render_and_save
 from agent_mes.interfaces import ContextRetrieverProtocol, RedisMemoryProtocol
 from agent_mes.schema import HumanGate, MESTask, StageEnum, StageEvent, TicketType
 from agent_mes.stages.base import BaseStage
@@ -37,6 +38,26 @@ class ReviewStage(BaseStage):
         events: list[StageEvent] = []
         drift_caught = False
 
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Opus 4.6",
+                action=f"first-pass review: {len(task.memory_provenance)} memories to verify",
+                metadata={"memories": len(task.memory_provenance), "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.75)
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Context",
+                action="cross-checking memory claims against incident ground truth",
+                metadata={"entity_type": "incident", "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.75)
+
         # Both CODE and SIMPLE tickets run memory verification — drift catches
         # fire whenever a hydrated memory contradicts a Context Surfaces fact.
         for memory in task.memory_provenance:
@@ -48,27 +69,29 @@ class ReviewStage(BaseStage):
                 drift_caught = True
                 memory.confidence = round(max(0.3, memory.confidence - 0.6), 2)
                 events.append(
-                    self._emit_event(
+                    await self._emit_event(
                         task=task,
-                        agent=self.AGENT,
-                        action="memory drift caught",
+                        agent="Opus 4.6",
+                        action=f"memory drift: {verification['discrepancy'][:50]}",
                         metadata={
                             "prior_incident": verification["actual"].get("incident_id", "unknown"),
                             "discrepancy": verification["discrepancy"][:80],
+                            "confidence_after": memory.confidence,
                             "status": "DRIFT",
                         },
                     )
                 )
+                await asyncio.sleep(0.55)
 
         if drift_caught:
-            # The HumanGate — pause for keyboard input on stage
+            # The HumanGate — pause for browser Approve click or stdin input.
             task.status = "blocked"
             gate = HumanGate(
                 stage=StageEnum.REVIEW,
                 prompt="memory drift caught — approve corrected fix? [y/n] ",
             )
             events.append(
-                self._emit_event(
+                await self._emit_event(
                     task=task,
                     agent="HUMAN",
                     action="awaiting approval",
@@ -83,24 +106,29 @@ class ReviewStage(BaseStage):
             task.status = "running"
 
             events.append(
-                self._emit_event(
+                await self._emit_event(
                     task=task,
                     agent="HUMAN",
                     action="approved" if approved else "rejected",
-                    metadata={"approver": gate.approver or "none", "status": "PASS" if approved else "FAIL"},
+                    metadata={
+                        "approver": gate.approver or "none",
+                        "status": "PASS" if approved else "FAIL",
+                    },
                 )
             )
         else:
             # Auto-approve when no drift OR for SIMPLE tickets
             events.append(
-                self._emit_event(
+                await self._emit_event(
                     task=task,
-                    agent=self.AGENT,
-                    action="reviewed — matches intent",
+                    agent="Opus 4.6",
+                    action="reviewed — matches intent, no drift",
                     metadata={"status": "PASS"},
                 )
             )
 
+        events[-1].artifacts.append(render_and_save(task, "review"))
+        await asyncio.sleep(0.6)
         return events
 
     async def _await_human(self, gate: HumanGate) -> bool:
