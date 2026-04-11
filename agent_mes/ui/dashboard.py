@@ -46,11 +46,13 @@ class Dashboard:
         if self._size_warned:
             return
         size = shutil.get_terminal_size((80, 24))
-        if size.columns < 100 or size.lines < 30:
+        if size.columns < 180 or size.lines < 50:
             self._size_warned = True
             print(
                 f"\n⚠ Terminal is {size.columns}x{size.lines}; "
-                f"AgentMES kanban prefers 100x60 or larger for full card visibility.\n"
+                f"AgentMES kanban needs at least 180x50 for the cards to render without "
+                f"aggressive line-wrapping. Resize your terminal (or zoom out a bit) before "
+                f"running the demo.\n"
             )
 
     def _render_all(self) -> None:
