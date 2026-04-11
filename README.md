@@ -30,6 +30,8 @@ make demo                               # via Makefile
 make smoke                              # run the end-to-end gate test
 ```
 
+**Terminal sizing:** AgentMES needs at least **180×50** for the kanban cards to render readably. Resize your terminal (or zoom out) before running the demo. The dashboard prints a warning if it detects a smaller window.
+
 When the live integrations land (`vish/redis-blaxel` branch), wire 1Password secrets:
 
 ```bash
