@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "category": "simple",
+    "description": "Add fastapi>=0.115 to pyproject.toml dependencies; create agent_mes/web/__init__.py (empty package marker). Verify pip install -e .[dev] works and `from agent_mes import web; import fastapi, sse_starlette, uvicorn` succeeds.",
+    "verify": "python -c 'from agent_mes import web; import fastapi, sse_starlette, uvicorn; print(\"ok\")'",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 2,
+    "category": "simple",
+    "description": "agent_mes/web/events.py — class EventBroker with subscribe() returning asyncio.Queue, unsubscribe(q), async publish(event, task) that serializes StageEvent + MESTask to JSON-compatible dict and fans out to all subscriber queues, current_state(tasks) helper that returns full snapshot for new connections. Plus tests/test_events.py with tests for: single subscriber payload shape, multiple subscribers all receive, unsubscribe is graceful.",
+    "verify": "pytest tests/test_events.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 3,
+    "category": "simple",
+    "description": "agent_mes/web/gates.py — class GateRegistry with register(task_id) returning asyncio.Event (lazy create), approve(task_id) sets the event (creates lazily if missing for order-independence), async wait(task_id, timeout=300) blocks until set returning True/False on timeout, reset() clears all events. Plus tests/test_gates.py with tests for: approve-then-wait, wait-then-approve, timeout, reset.",
+    "verify": "pytest tests/test_gates.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 4,
+    "category": "simple",
+    "description": "Extend agent_mes/stages/review.py: ReviewStage.__init__ signature becomes (redis, context, gate_provider=None) where gate_provider is Callable[[HumanGate], Awaitable[bool]] | None. _await_human(gate) checks self.gate_provider — if set, calls await self.gate_provider(gate) and returns its bool result; otherwise falls through to existing input()/AGENTMES_AUTO_APPROVE=1 logic. Default behavior MUST be unchanged — all 60 existing tests pass without modification.",
+    "verify": "AGENTMES_AUTO_APPROVE=1 pytest -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 5,
+    "category": "moderate",
+    "description": "agent_mes/web/server.py — FastAPI app with module-level EventBroker + GateRegistry + pipeline state dict. Routes: GET /api/state returns {tasks, running}; POST /api/launch returns 409 if running else resets GateRegistry, builds fresh _new_task tickets, fresh stub instances, builds Pipeline with gate_provider wired to GateRegistry.wait, kicks off pipeline.run_parallel as asyncio background task; POST /api/approve/{task_id} calls gates.approve; GET /api/events returns EventSourceResponse that pushes initial current_state then drains the broker subscriber queue; GET / serves web/index.html; GET /replay serves web/replay.html; static files via app.mount('/', StaticFiles(directory=resolved_path)). Resolve static dir absolutely via Path(__file__).parent.parent.parent / 'web'.",
+    "verify": "AGENTMES_AUTO_APPROVE=1 pytest tests/test_web.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 6,
+    "category": "simple",
+    "description": "agent_mes/cli.py — add new @app.command() web that calls uvicorn.run('agent_mes.web.server:app', host='0.0.0.0', port=8000, log_level='info'). Print URLs on startup (http://localhost:8000 and http://100.85.105.99:8000). Existing demo command unchanged. Both demo and web visible in --help.",
+    "verify": "python -m agent_mes --help | grep -q web && timeout 2 python -m agent_mes web 2>&1 | grep -q '100.85.105.99' || true",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 7,
+    "category": "moderate",
+    "description": "Frontend bundle: web/index.html (overwrite — replaces asciinema page) with header (title + state indicator + Launch button) + main.board with 7 column divs data-stage=plan/design/build/test/review/document/deploy. web/style.css with dark theme (#0b0d12 bg, monospace, CSS transitions on card move). web/app.js: on load fetch /api/state and render cards into current_stage columns; subscribe EventSource('/api/events'); on each event update card by id and move to new column if current_stage changed; render card body with type icon (⚙ code / ✉ simple), pre-launch raw_input OR detailed changelog grouped by stage (━ STAGE ━ headers, ✓/✗/⚠/⏳ symbols, indented metadata, indented artifacts in green); inline [APPROVE TKT-XXX] button when status=blocked posting /api/approve/{id}; Launch button posts /api/launch, disables during run.",
+    "verify": "test -f web/index.html && test -f web/style.css && test -f web/app.js && grep -q AgentMES web/index.html && grep -q EventSource web/app.js",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 8,
+    "category": "simple",
+    "description": "Move the current asciinema-only web/index.html content to web/replay.html. The asciinema-player CDN embed + full-demo.cast reference + dark theme all preserved. Accessible at /replay route via the FastAPI server.",
+    "verify": "test -f web/replay.html && grep -q asciinema-player web/replay.html",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 9,
+    "category": "moderate",
+    "description": "tests/test_web.py — FastAPI TestClient based integration tests: test_state_endpoint_returns_initial_tasks; test_launch_starts_pipeline (200 then 409); test_launch_then_consume_events (drain SSE stream, both tickets reach merged); test_approve_unblocks_review_gate (POST /api/approve completes the blocked task); test_relaunch_resets_state (two launches in a row, second has fresh state); test_get_replay_route (returns 200 + asciinema-player content). Uses AGENTMES_AUTO_APPROVE=1 for tests that don't exercise the explicit approve flow.",
+    "verify": "AGENTMES_AUTO_APPROVE=1 pytest tests/test_events.py tests/test_gates.py tests/test_web.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 10,
+    "category": "simple",
+    "description": "README.md: add 'Web UI' section documenting `agent-mes web` and `make web`, the URL (http://100.85.105.99:8000 from MBP via Tailscale + http://localhost:8000 locally), the macOS firewall first-launch prompt, and the /replay asciinema fallback. Mention both surfaces (terminal demo + web). Makefile: replace `web` target to run `$(PY) -m agent_mes web` instead of python -m http.server. Add `web-smoke` target that boots the server, curls /api/state, and kills it. Final smoke: full suite passes + web boots cleanly.",
+    "verify": "grep -q 'Web UI' README.md && grep -q 'agent-mes web' README.md && grep -q 'agent_mes web' Makefile && AGENTMES_AUTO_APPROVE=1 pytest -x 2>&1 | tail -5 | grep -q passed",
+    "passes": false,
+    "skipped": false
+  }
+]
