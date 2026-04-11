@@ -3,210 +3,58 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentMES — manufacturing execution for autonomous agents</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.1/dist/bundle/asciinema-player.css" />
-  <style>
-    :root {
-      color-scheme: dark;
-    }
-    body {
-      margin: 0;
-      padding: 32px 24px 64px;
-      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
-      background: #0b0d12;
-      color: #e6e6e6;
-      line-height: 1.55;
-      max-width: 1100px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    header {
-      border-bottom: 1px solid #1f2330;
-      padding-bottom: 18px;
-      margin-bottom: 28px;
-    }
-    h1 {
-      margin: 0 0 6px;
-      font-size: 28px;
-      letter-spacing: -0.01em;
-    }
-    h1 span.icon {
-      color: #4dd0e1;
-    }
-    .tagline {
-      color: #9aa3b2;
-      font-size: 15px;
-    }
-    .meta {
-      display: flex;
-      gap: 18px;
-      margin-top: 14px;
-      font-size: 13px;
-      color: #6f7689;
-      flex-wrap: wrap;
-    }
-    .meta a {
-      color: #4dd0e1;
-      text-decoration: none;
-    }
-    .meta a:hover { text-decoration: underline; }
-    .player-wrap {
-      background: #050609;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid #1f2330;
-      margin-bottom: 28px;
-    }
-    .controls {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      font-size: 13px;
-      color: #9aa3b2;
-    }
-    section {
-      margin-bottom: 32px;
-    }
-    h2 {
-      font-size: 18px;
-      letter-spacing: -0.005em;
-      color: #d0d4dd;
-      margin: 0 0 10px;
-    }
-    p, li { color: #c2c7d3; }
-    code {
-      background: #161922;
-      padding: 1px 6px;
-      border-radius: 4px;
-      font-family: "JetBrains Mono", Menlo, monospace;
-      font-size: 13px;
-      color: #e6e6e6;
-    }
-    pre {
-      background: #161922;
-      padding: 14px 18px;
-      border-radius: 8px;
-      overflow-x: auto;
-      font-size: 13px;
-      border: 1px solid #1f2330;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    th, td {
-      text-align: left;
-      padding: 8px 10px;
-      border-bottom: 1px solid #1f2330;
-      vertical-align: top;
-    }
-    th { color: #9aa3b2; font-weight: 600; }
-    .footer {
-      margin-top: 48px;
-      padding-top: 18px;
-      border-top: 1px solid #1f2330;
-      color: #6f7689;
-      font-size: 12px;
-    }
-  </style>
+  <title>AgentMES — live kanban</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="icon">⚙</span>
+      <h1>AgentMES</h1>
+      <span class="tagline">manufacturing execution for autonomous agents</span>
+    </div>
+    <div class="state-indicator" id="state-indicator">ready — press Launch</div>
+    <button id="launch-btn" class="launch-btn">▶ Launch Pipeline</button>
+    <a href="/replay" class="replay-link">↻ asciinema replay</a>
+  </header>
 
-<header>
-  <h1><span class="icon">⚙</span> AgentMES</h1>
-  <div class="tagline">Manufacturing execution system for autonomous agents.</div>
-  <div class="meta">
-    <span>Blaxel × Codex × Redis AI Hack Day</span>
-    <span>Wordware HQ — San Francisco</span>
-    <span>2026-04-11</span>
+  <main class="board" id="board">
+    <div class="column" data-stage="plan">
+      <div class="col-header">PLAN</div>
+      <div class="cards" id="col-plan"></div>
+    </div>
+    <div class="column" data-stage="design">
+      <div class="col-header">DESIGN</div>
+      <div class="cards" id="col-design"></div>
+    </div>
+    <div class="column" data-stage="build">
+      <div class="col-header">BUILD</div>
+      <div class="cards" id="col-build"></div>
+    </div>
+    <div class="column" data-stage="test">
+      <div class="col-header">TEST</div>
+      <div class="cards" id="col-test"></div>
+    </div>
+    <div class="column" data-stage="review">
+      <div class="col-header">REVIEW</div>
+      <div class="cards" id="col-review"></div>
+    </div>
+    <div class="column" data-stage="document">
+      <div class="col-header">DOCUMENT</div>
+      <div class="cards" id="col-document"></div>
+    </div>
+    <div class="column" data-stage="deploy">
+      <div class="col-header">DEPLOY/MAINTAIN</div>
+      <div class="cards" id="col-deploy"></div>
+    </div>
+  </main>
+
+  <footer class="bottombar">
+    <span>Blaxel × Codex × Redis AI Hack Day · Wordware HQ · 2026-04-11</span>
+    <span>·</span>
     <a href="https://github.com/benikigai/agent-mes" target="_blank">github.com/benikigai/agent-mes</a>
-    <a href="https://github.com/benikigai/agent-mes/pull/1" target="_blank">PR #1</a>
-  </div>
-</header>
+  </footer>
 
-<section>
-  <div class="player-wrap">
-    <div id="agentmes-demo"></div>
-  </div>
-  <div class="controls">
-    <span>↑ press space to play / pause &nbsp; · &nbsp; arrow keys seek &nbsp; · &nbsp; <code>0-9</code> jumps to deciles</span>
-  </div>
-</section>
-
-<section>
-  <h2>What you're watching</h2>
-  <p>Two tickets flow in parallel through the same 7-stage AI-Native Engineering Workflow. Cards on the left start short and grow as they collect StageEvents — by the time a card lands in DEPLOY, the body is its full audit trail.</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Ticket</th>
-        <th>Type</th>
-        <th>What it tests</th>
-        <th>The wow beats</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>⚙ TKT-001</td>
-        <td>CODE</td>
-        <td>Fix the flaky <code>test_oauth_token_refresh</code> blocking CI</td>
-        <td>Stage 4 Blaxel egress kill at 23ms · Stage 5 Redis drift catch on the prior mock</td>
-      </tr>
-      <tr>
-        <td>✉ TKT-002</td>
-        <td>SIMPLE</td>
-        <td>Draft postmortem for incident-2026-04-09</td>
-        <td>Stage 5 Redis déjà-vu catch — same root cause as inc_201, action item never deployed</td>
-      </tr>
-    </tbody>
-  </table>
-</section>
-
-<section>
-  <h2>Sponsor coverage</h2>
-  <ul>
-    <li><strong>Wordware</strong> — Stage 1 Plan, the natural-language compiler that turns Slack rants into typed JSON</li>
-    <li><strong>OpenAI Codex</strong> — Stage 3 Build, replay-mode asciinema of a real worktree run</li>
-    <li><strong>Blaxel</strong> — Stage 4 Test, hardware-isolated microVM with the egress kill at sub-25ms</li>
-    <li><strong>Redis Agent Memory Server</strong> — Stages 2/5/6/7, semantic recall + decision logs</li>
-    <li><strong>Redis Context Surfaces</strong> — Stages 2/5, schema-typed ground-truth retrieval via auto-generated MCP tools</li>
-  </ul>
-</section>
-
-<section>
-  <h2>Run it locally</h2>
-  <pre>cd ~/code/blaxel-codex-redis-hackathon
-source .venv/bin/activate
-agent-mes demo --dry-run</pre>
-  <p>Resize your terminal to ≥180×50 first. The dashboard prints a warning if it's smaller.</p>
-</section>
-
-<div class="footer">
-  Built autonomously via /yolo. 23 tasks. 60 tests passing. One human gate per ticket.<br>
-  <a href="https://github.com/benikigai/agent-mes/blob/main/docs/specs/agentmes.md">spec</a> ·
-  <a href="https://github.com/benikigai/agent-mes/blob/main/research/judges-intel.md">judge intel</a> ·
-  <a href="https://github.com/benikigai/agent-mes/blob/main/docs/runs/agentmes-run.md">run report</a>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.1/dist/bundle/asciinema-player.min.js"></script>
-<script>
-  AsciinemaPlayer.create(
-    'full-demo.cast',
-    document.getElementById('agentmes-demo'),
-    {
-      cols: 200,
-      rows: 60,
-      autoPlay: true,
-      loop: false,
-      speed: 1.5,
-      idleTimeLimit: 1.0,
-      fit: 'width',
-      theme: 'monokai',
-      poster: 'npt:0:01'
-    }
-  );
-</script>
-
+  <script src="/app.js"></script>
 </body>
 </html>
