@@ -7,10 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Awaitable, Callable
 
 from agent_mes.interfaces import ContextRetrieverProtocol, RedisMemoryProtocol
 from agent_mes.schema import HumanGate, MESTask, StageEnum, StageEvent, TicketType
 from agent_mes.stages.base import BaseStage
+
+# Type alias for the optional browser-driven gate hook.
+# Receives the HumanGate, returns True on approval / False on rejection or timeout.
+GateProvider = Callable[[HumanGate], Awaitable[bool]]
 
 
 class ReviewStage(BaseStage):
@@ -21,9 +26,11 @@ class ReviewStage(BaseStage):
         self,
         redis: RedisMemoryProtocol,
         context: ContextRetrieverProtocol,
+        gate_provider: GateProvider | None = None,
     ) -> None:
         self.redis = redis
         self.context = context
+        self.gate_provider = gate_provider
 
     async def execute(self, task: MESTask) -> list[StageEvent]:
         task.current_stage = StageEnum.REVIEW
@@ -97,9 +104,13 @@ class ReviewStage(BaseStage):
         return events
 
     async def _await_human(self, gate: HumanGate) -> bool:
-        """Pause for keyboard input. Auto-approve if AGENTMES_AUTO_APPROVE=1
-        is set in the environment (used in tests + smoke runs).
+        """Three modes, in priority order:
+        1. If gate_provider is set (web mode), call it and return its result
+        2. If AGENTMES_AUTO_APPROVE=1 env var is set, auto-approve (test mode)
+        3. Otherwise, prompt for keyboard input via stdin (terminal mode)
         """
+        if self.gate_provider is not None:
+            return await self.gate_provider(gate)
         if os.environ.get("AGENTMES_AUTO_APPROVE") == "1":
             await asyncio.sleep(0.1)
             return True
