@@ -18,9 +18,9 @@
 - [x] Task 15: agent_mes/stages/review.py — Review stage (drift catch + HITL gate) — COMPLEX
 - [x] Task 16: agent_mes/stages/document.py — Document stage — SIMPLE
 - [x] Task 17: agent_mes/stages/deploy.py — Deploy stage (GitHub PR for code) — MODERATE
-- [ ] Task 18: agent_mes/pipeline.py — orchestrator — MODERATE
-- [ ] Task 19: agent_mes/ui/lanes.py — Rich Layout — MODERATE
-- [ ] Task 20: agent_mes/ui/dashboard.py — live dashboard — COMPLEX
-- [ ] Task 21: agent_mes/cli.py + __main__.py — CLI entrypoint — SIMPLE
-- [ ] Task 22: tests/test_smoke.py — end-to-end smoke test — SIMPLE
+- [x] Task 18: agent_mes/pipeline.py — orchestrator — MODERATE
+- [x] Task 19: agent_mes/ui/lanes.py — Rich Layout — MODERATE
+- [x] Task 20: agent_mes/ui/dashboard.py — live dashboard — COMPLEX
+- [x] Task 21: agent_mes/cli.py + __main__.py — CLI entrypoint — SIMPLE
+- [x] Task 22: tests/test_smoke.py — end-to-end smoke test — SIMPLE
 - [ ] Task 23: README.md + polish — SIMPLE

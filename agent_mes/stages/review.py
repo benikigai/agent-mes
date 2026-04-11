@@ -30,27 +30,30 @@ class ReviewStage(BaseStage):
         events: list[StageEvent] = []
         drift_caught = False
 
-        for memory in task.memory_provenance:
-            verification = await self.context.verify_claim(
-                claim=memory.text,
-                entity_type="incident",
-            )
-            if not verification["verified"]:
-                drift_caught = True
-                memory.confidence = round(max(0.3, memory.confidence - 0.6), 2)
-                events.append(
-                    self._emit_event(
-                        task=task,
-                        agent=self.AGENT,
-                        action="memory drift",
-                        metadata={
-                            "memory": verification["actual"].get("endpoint", "unknown"),
-                            "ticket": "/v2/oauth",
-                            "discrepancy": verification["discrepancy"][:60],
-                            "status": "DRIFT",
-                        },
-                    )
+        # Only CODE tickets trigger the memory drift catch — SIMPLE tickets
+        # (email/knowledge work) get a lightweight intent-match review.
+        if task.type == TicketType.CODE:
+            for memory in task.memory_provenance:
+                verification = await self.context.verify_claim(
+                    claim=memory.text,
+                    entity_type="incident",
                 )
+                if not verification["verified"]:
+                    drift_caught = True
+                    memory.confidence = round(max(0.3, memory.confidence - 0.6), 2)
+                    events.append(
+                        self._emit_event(
+                            task=task,
+                            agent=self.AGENT,
+                            action="memory drift",
+                            metadata={
+                                "memory": verification["actual"].get("endpoint", "unknown"),
+                                "ticket": "/v2/oauth",
+                                "discrepancy": verification["discrepancy"][:60],
+                                "status": "DRIFT",
+                            },
+                        )
+                    )
 
         if drift_caught and task.type == TicketType.CODE:
             # The HumanGate — pause for keyboard input on stage
