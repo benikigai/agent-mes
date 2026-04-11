@@ -49,16 +49,33 @@ def build_layout() -> Layout:
 
 
 def render_card(task: MESTask) -> Panel:
-    """Render a single task as a Panel containing the running changelog."""
+    """Render a single task as a Panel.
+
+    Two modes:
+      - Initial / pre-launch: shows the inbound Slack message so judges
+        can read the input before pressing [enter] to launch the pipeline.
+      - Running / post-launch: shows the running detailed changelog with
+        stage headers, agents, metadata, and artifacts.
+    """
     type_icon = "⚙" if task.type.value == "code" else "✉"
     title = f"{type_icon} {task.id}"
 
-    lines: list[Text] = [
+    if not task.events:
+        # Pre-launch state — show the inbound message so judges see the input
+        lines: list[Text] = [
+            Text(f"from: {task.requester} in {task.source}", style="dim italic"),
+            Text("─" * 32, style="dim"),
+            Text(task.raw_input, style="white"),
+        ]
+        border = "yellow"  # "pending — awaiting [enter] to launch"
+        return Panel(Group(*lines), title=title, border_style=border, padding=(0, 1))
+
+    # Running / completed state — detailed changelog
+    lines = [
         Text(task.intent[:34], style="bold white"),
         Text("─" * 32, style="dim"),
     ]
 
-    # Group events by stage so we can render section headers
     by_stage: dict[StageEnum, list] = {}
     for event in task.events:
         by_stage.setdefault(event.stage, []).append(event)
