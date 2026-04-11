@@ -2,8 +2,8 @@
   {
     "id": 1,
     "category": "simple",
-    "description": "Project scaffolding — create pyproject.toml (deps: rich, pydantic>=2, httpx, typer, pytest), Makefile (test/run targets), package directories agent_mes/{integrations/stubs,stages,ui,demo}, tests/, recordings/, .demo/. Add __init__.py to each package. python -m agent_mes --help must run.",
-    "verify": "python -c 'import agent_mes' && make test",
+    "description": "Project scaffolding — create pyproject.toml (deps: rich, pydantic>=2, httpx, typer, pytest), Makefile (test/run targets), .env.tpl (committed file with op://Hackathons/<Item>/<field> placeholder references for BLAXEL_API_KEY, REDIS_URL, REDIS_PASSWORD, REDIS_CTX_ADMIN_KEY, WORDWARE_API_KEY, OPENAI_API_KEY — no real secrets), package directories agent_mes/{integrations/stubs,stages,ui,demo}, tests/, recordings/, .demo/. Add __init__.py to each package. python -m agent_mes --help must run.",
+    "verify": "python -c 'import agent_mes' && make test && test -f .env.tpl",
     "passes": false,
     "skipped": false
   },
