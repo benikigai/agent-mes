@@ -3,75 +3,165 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentMES — manufacturing execution for autonomous agents</title>
+  <title>AgentMES — AI-Native Engineering Workflow</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.15.1/dist/bundle/asciinema-player.css" />
   <style>
-    :root {
-      color-scheme: dark;
-    }
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
     body {
-      margin: 0;
-      padding: 32px 24px 64px;
+      margin: 0 auto;
+      padding: 36px 28px 72px;
       font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
       background: #0b0d12;
       color: #e6e6e6;
       line-height: 1.55;
-      max-width: 1100px;
-      margin-left: auto;
-      margin-right: auto;
+      max-width: 1240px;
     }
-    header {
+
+    /* ─── hero ───────────────────────────────────────────── */
+    .hero {
       border-bottom: 1px solid #1f2330;
-      padding-bottom: 18px;
-      margin-bottom: 28px;
+      padding-bottom: 22px;
+      margin-bottom: 32px;
     }
-    h1 {
-      margin: 0 0 6px;
-      font-size: 28px;
-      letter-spacing: -0.01em;
-    }
-    h1 span.icon {
+    .hero .eyebrow {
       color: #4dd0e1;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
     }
-    .tagline {
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 40px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      font-weight: 700;
+    }
+    .hero h1 .icon { color: #4dd0e1; }
+    .hero .tagline {
       color: #9aa3b2;
-      font-size: 15px;
+      font-size: 17px;
+      max-width: 820px;
     }
-    .meta {
+    .hero .meta {
       display: flex;
       gap: 18px;
-      margin-top: 14px;
+      margin-top: 18px;
       font-size: 13px;
       color: #6f7689;
       flex-wrap: wrap;
     }
-    .meta a {
-      color: #4dd0e1;
-      text-decoration: none;
-    }
-    .meta a:hover { text-decoration: underline; }
+    .hero .meta a { color: #4dd0e1; text-decoration: none; }
+    .hero .meta a:hover { text-decoration: underline; }
+
+    /* ─── player ─────────────────────────────────────────── */
     .player-wrap {
       background: #050609;
-      padding: 12px;
-      border-radius: 10px;
+      padding: 14px;
+      border-radius: 12px;
       border: 1px solid #1f2330;
-      margin-bottom: 28px;
+      margin-bottom: 18px;
     }
     .controls {
       display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 24px;
       font-size: 13px;
       color: #9aa3b2;
+      flex-wrap: wrap;
     }
-    section {
-      margin-bottom: 32px;
+    .controls code {
+      background: #161922;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: "JetBrains Mono", Menlo, monospace;
+      font-size: 12px;
+      color: #e6e6e6;
+      border: 1px solid #1f2330;
     }
+    .controls .key-hint { color: #6f7689; }
+
+    /* ─── 7-stage grid ───────────────────────────────────── */
+    .stage-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+      margin-bottom: 40px;
+    }
+    @media (max-width: 1100px) {
+      .stage-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    @media (max-width: 780px) {
+      .stage-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .stage-card {
+      background: #0f1219;
+      border: 1px solid #1f2330;
+      border-radius: 10px;
+      padding: 14px 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .stage-card .stage-num {
+      font-family: "JetBrains Mono", Menlo, monospace;
+      font-size: 11px;
+      color: #4dd0e1;
+      letter-spacing: 0.05em;
+    }
+    .stage-card h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #e6e6e6;
+    }
+    .stage-card .sponsor {
+      font-size: 10px;
+      color: #6f7689;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .stage-card .desc {
+      font-size: 12px;
+      color: #9aa3b2;
+      line-height: 1.45;
+      margin: 2px 0 6px;
+    }
+    .stage-card .beat {
+      font-size: 11px;
+      color: #c2c7d3;
+      font-family: "JetBrains Mono", Menlo, monospace;
+      border-top: 1px solid #1f2330;
+      padding-top: 8px;
+      margin-top: auto;
+      line-height: 1.4;
+    }
+    .stage-card.active {
+      background: linear-gradient(180deg, #0b2830 0%, #0f1219 60%);
+      border-color: #4dd0e1;
+      box-shadow: 0 0 0 1px rgba(77, 208, 225, 0.4), 0 8px 24px -12px rgba(77, 208, 225, 0.35);
+      transform: translateY(-2px);
+    }
+    .stage-card.active .stage-num { color: #78e4f3; }
+    .stage-card.active h3 { color: #ffffff; }
+    .stage-card.done {
+      opacity: 0.6;
+    }
+    .stage-card.done .stage-num::before { content: "✓ "; color: #4ade80; }
+
+    /* ─── secondary sections ─────────────────────────────── */
+    section { margin-bottom: 32px; }
     h2 {
       font-size: 18px;
       letter-spacing: -0.005em;
       color: #d0d4dd;
-      margin: 0 0 10px;
+      margin: 0 0 12px;
     }
     p, li { color: #c2c7d3; }
     code {
@@ -90,60 +180,122 @@
       font-size: 13px;
       border: 1px solid #1f2330;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th, td {
       text-align: left;
-      padding: 8px 10px;
+      padding: 9px 11px;
       border-bottom: 1px solid #1f2330;
       vertical-align: top;
     }
     th { color: #9aa3b2; font-weight: 600; }
     .footer {
-      margin-top: 48px;
-      padding-top: 18px;
+      margin-top: 52px;
+      padding-top: 20px;
       border-top: 1px solid #1f2330;
       color: #6f7689;
       font-size: 12px;
     }
+    .footer a { color: #4dd0e1; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
 
-<header>
-  <h1><span class="icon">⚙</span> AgentMES</h1>
-  <div class="tagline">Manufacturing execution system for autonomous agents.</div>
+<div class="hero">
+  <div class="eyebrow">AgentMES · manufacturing execution for autonomous agents</div>
+  <h1><span class="icon">⚙</span> AI-Native Engineering Workflow</h1>
+  <div class="tagline">
+    OpenAI's 7-stage bipartite pipeline — agents do the throughput work,
+    humans own the judgment gates. Two tickets flow in parallel through
+    Plan → Design → Build → Test → Review → Document → Deploy.
+  </div>
   <div class="meta">
     <span>Blaxel × Codex × Redis AI Hack Day</span>
     <span>Wordware HQ — San Francisco</span>
     <span>2026-04-11</span>
     <a href="https://github.com/benikigai/agent-mes" target="_blank">github.com/benikigai/agent-mes</a>
-    <a href="https://github.com/benikigai/agent-mes/pull/1" target="_blank">PR #1</a>
   </div>
-</header>
+</div>
 
-<section>
-  <div class="player-wrap">
-    <div id="agentmes-demo"></div>
+<div class="player-wrap">
+  <div id="agentmes-demo"></div>
+</div>
+
+<div class="controls">
+  <span>↑ <code>space</code> <span class="key-hint">play/pause</span></span>
+  <span>· <code>←</code> <code>→</code> <span class="key-hint">seek ±5s</span></span>
+  <span>· <code>.</code> <span class="key-hint">frame step</span></span>
+  <span>· <span class="key-hint">auto-pauses at each stage — press space to advance</span></span>
+</div>
+
+<div class="stage-grid" id="stage-grid">
+  <div class="stage-card" data-stage-idx="0">
+    <div class="stage-num">STAGE 1</div>
+    <h3>Plan</h3>
+    <div class="sponsor">Wordware</div>
+    <div class="desc">Natural-language compiler turns a Slack rant into a typed acceptance-criteria JSON.</div>
+    <div class="beat">Opus 4.6 classifies intent → structured AWP payload</div>
   </div>
-  <div class="controls">
-    <span>↑ press space to play / pause &nbsp; · &nbsp; arrow keys seek &nbsp; · &nbsp; <code>0-9</code> jumps to deciles</span>
+  <div class="stage-card" data-stage-idx="1">
+    <div class="stage-num">STAGE 2</div>
+    <h3>Design</h3>
+    <div class="sponsor">Redis Memory + Context Surfaces</div>
+    <div class="desc">Hydrate <code>memory_provenance</code> and <code>context_bundle</code> from long-term + schema-typed sources in parallel.</div>
+    <div class="beat">Agent Memory recall + MCP-typed ground truth</div>
   </div>
-</section>
+  <div class="stage-card" data-stage-idx="2">
+    <div class="stage-num">STAGE 3</div>
+    <h3>Build</h3>
+    <div class="sponsor">OpenAI Codex</div>
+    <div class="desc">Asciinema replay of a real Codex worktree run — the diff is assembled stroke by stroke.</div>
+    <div class="beat">+47 / −3 lines across 3 files</div>
+  </div>
+  <div class="stage-card" data-stage-idx="3">
+    <div class="stage-num">STAGE 4</div>
+    <h3>Test</h3>
+    <div class="sponsor">Blaxel</div>
+    <div class="desc">Hardware-isolated microVM runs the suite inside the blast-radius the plan declared.</div>
+    <div class="beat">iter1 FAIL → iter2 egress KILL @ 23ms → iter3 PASS</div>
+  </div>
+  <div class="stage-card" data-stage-idx="4">
+    <div class="stage-num">STAGE 5</div>
+    <h3>Review</h3>
+    <div class="sponsor">Redis + HUMAN gate</div>
+    <div class="desc">Cross-check every memory claim against ground truth. Memory drift catches trigger a human gate.</div>
+    <div class="beat">⚠ DRIFT → ✓ HUMAN approved</div>
+  </div>
+  <div class="stage-card" data-stage-idx="5">
+    <div class="stage-num">STAGE 6</div>
+    <h3>Document</h3>
+    <div class="sponsor">Redis Memory</div>
+    <div class="desc">Write the decision log back as a long-term lesson — negative constraints flagged for future recall.</div>
+    <div class="beat">lesson written · negative_constraint=true</div>
+  </div>
+  <div class="stage-card" data-stage-idx="6">
+    <div class="stage-num">STAGE 7</div>
+    <h3>Deploy</h3>
+    <div class="sponsor">GitHub + Blaxel + Redis</div>
+    <div class="desc">Open a real PR with the full receipt trail as the body. Monitoring breadcrumb logged for standby.</div>
+    <div class="beat">PR opened · standby=blaxel · merged ✓</div>
+  </div>
+</div>
 
 <section>
   <h2>What you're watching</h2>
-  <p>Two tickets flow in parallel through the same 7-stage AI-Native Engineering Workflow. Cards on the left start short and grow as they collect StageEvents — by the time a card lands in DEPLOY, the body is its full audit trail.</p>
+  <p>
+    Two tickets flow in parallel through the same 7-stage pipeline. Cards on the
+    left start as raw Slack text; as they progress they accumulate stage receipts
+    inside the card body — by the time a card lands in DEPLOY, the body <em>is</em>
+    the audit trail. The replay auto-pauses at each stage so you can read the
+    per-stage breakdown above before continuing.
+  </p>
   <table>
     <thead>
       <tr>
         <th>Ticket</th>
         <th>Type</th>
         <th>What it tests</th>
-        <th>The wow beats</th>
+        <th>The wow beat</th>
       </tr>
     </thead>
     <tbody>
@@ -157,55 +309,100 @@
         <td>✉ TKT-002</td>
         <td>SIMPLE</td>
         <td>Draft postmortem for incident-2026-04-09</td>
-        <td>Stage 5 Redis déjà-vu catch — same root cause as inc_201, action item never deployed</td>
+        <td>Stage 5 Redis déjà-vu catch — same root cause as a prior incident, action item never deployed</td>
       </tr>
     </tbody>
   </table>
 </section>
 
 <section>
-  <h2>Sponsor coverage</h2>
-  <ul>
-    <li><strong>Wordware</strong> — Stage 1 Plan, the natural-language compiler that turns Slack rants into typed JSON</li>
-    <li><strong>OpenAI Codex</strong> — Stage 3 Build, replay-mode asciinema of a real worktree run</li>
-    <li><strong>Blaxel</strong> — Stage 4 Test, hardware-isolated microVM with the egress kill at sub-25ms</li>
-    <li><strong>Redis Agent Memory Server</strong> — Stages 2/5/6/7, semantic recall + decision logs</li>
-    <li><strong>Redis Context Surfaces</strong> — Stages 2/5, schema-typed ground-truth retrieval via auto-generated MCP tools</li>
-  </ul>
-</section>
-
-<section>
   <h2>Run it locally</h2>
   <pre>cd ~/code/blaxel-codex-redis-hackathon
 source .venv/bin/activate
-agent-mes demo --dry-run</pre>
-  <p>Resize your terminal to ≥180×50 first. The dashboard prints a warning if it's smaller.</p>
+agent-mes demo --dry-run      # terminal kanban
+agent-mes web                 # interactive web kanban on :8000</pre>
+  <p>The terminal kanban needs ≥180×50 to render the card bodies without aggressive line wrapping.</p>
 </section>
 
 <div class="footer">
-  Built autonomously via /yolo. 23 tasks. 60 tests passing. One human gate per ticket.<br>
+  Built autonomously via /yolo · 23 tasks · 80 tests green · bipartite state machine · one human gate per drift catch<br>
   <a href="https://github.com/benikigai/agent-mes/blob/main/docs/specs/agentmes.md">spec</a> ·
   <a href="https://github.com/benikigai/agent-mes/blob/main/research/judges-intel.md">judge intel</a> ·
-  <a href="https://github.com/benikigai/agent-mes/blob/main/docs/runs/agentmes-run.md">run report</a>
+  <a href="https://github.com/benikigai/agent-mes">repo</a>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.15.1/dist/bundle/asciinema-player.min.js"></script>
 <script>
-  AsciinemaPlayer.create(
-    'full-demo.cast',
+  // Marker timestamps derived from a headless instrumented run of the same
+  // pipeline the cast captures. Each marker lands ~2.4s after the stage's
+  // first execute() call — that puts the pause mid-dwell, when the card is
+  // fully settled in its new column. See Makefile `record` target.
+  const STAGE_MARKERS = [
+    [ 2.4, "1. PLAN — Wordware compiles the intent"],
+    [ 5.3, "2. DESIGN — Redis hydrates memory + context"],
+    [ 8.3, "3. BUILD — Codex writes the diff"],
+    [10.9, "4. TEST — Blaxel sandbox verifies"],
+    [13.4, "5. REVIEW — memory drift catch + human gate"],
+    [16.3, "6. DOCUMENT — decision log as long-term lesson"],
+    [18.7, "7. DEPLOY — PR opened + breadcrumb logged"]
+  ];
+
+  const player = AsciinemaPlayer.create(
+    '/full-demo.cast',
     document.getElementById('agentmes-demo'),
     {
       cols: 200,
       rows: 60,
-      autoPlay: true,
+      autoPlay: false,
       loop: false,
-      speed: 1.5,
-      idleTimeLimit: 1.0,
+      speed: 1.0,
+      idleTimeLimit: 1.2,
       fit: 'width',
       theme: 'monokai',
-      poster: 'npt:0:01'
+      markers: STAGE_MARKERS,
+      pauseOnMarkers: true,
+      poster: 'npt:0:00'
     }
   );
+
+  // Live active-stage highlighting. asciinema-player v3 fires a 'marker'
+  // event each time the playhead crosses a marker. Index aligns with
+  // STAGE_MARKERS which aligns with data-stage-idx in the grid.
+  const cards = document.querySelectorAll('.stage-card');
+
+  function setActiveStage(idx) {
+    cards.forEach((c, i) => {
+      c.classList.remove('active');
+      if (i < idx) c.classList.add('done');
+      else c.classList.remove('done');
+    });
+    if (cards[idx]) cards[idx].classList.add('active');
+  }
+
+  // Initial: nothing active until play starts
+  player.addEventListener('play', () => {
+    // On first play, if we're before the first marker, highlight stage 0
+    // so the audience knows where the flow begins.
+    if (!document.querySelector('.stage-card.active')) {
+      setActiveStage(0);
+    }
+  });
+
+  player.addEventListener('marker', (ev) => {
+    // ev.index is 0-based; the marker index IS the stage the player is
+    // entering, and the cast is paused by pauseOnMarkers.
+    if (typeof ev.index === 'number') {
+      setActiveStage(ev.index);
+    }
+  });
+
+  player.addEventListener('ended', () => {
+    // All stages done — mark every card as ✓ done and drop the highlight.
+    cards.forEach(c => {
+      c.classList.remove('active');
+      c.classList.add('done');
+    });
+  });
 </script>
 
 </body>

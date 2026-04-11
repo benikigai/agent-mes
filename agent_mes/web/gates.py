@@ -44,6 +44,15 @@ class GateRegistry:
         """Clear all events. Called on /api/launch to start a fresh run."""
         self._events.clear()
 
+    def reset_task(self, task_id: str) -> None:
+        """Clear every gate event tied to a task — handles both the legacy
+        bare ``task_id`` key and the namespaced ``task_id:stage`` variants
+        that Review and Deploy use."""
+        prefix = f"{task_id}:"
+        for key in list(self._events.keys()):
+            if key == task_id or key.startswith(prefix):
+                self._events.pop(key, None)
+
     @property
     def pending(self) -> list[str]:
         """Task ids that have a registered but unset event (i.e. waiting)."""

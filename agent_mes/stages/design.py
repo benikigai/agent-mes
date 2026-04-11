@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
+from agent_mes.artifacts import render_and_save
 from agent_mes.interfaces import ContextRetrieverProtocol, RedisMemoryProtocol
 from agent_mes.schema import MemoryProvenance, MESTask, StageEnum, StageEvent
 from agent_mes.stages.base import BaseStage
@@ -26,6 +27,27 @@ class DesignStage(BaseStage):
 
     async def execute(self, task: MESTask) -> list[StageEvent]:
         task.current_stage = StageEnum.DESIGN
+        events: list[StageEvent] = []
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Redis",
+                action=f"hydrating memories for session {task.id}",
+                metadata={"query": task.intent[:50], "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.6)
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Context",
+                action="querying svc_auth ground truth",
+                metadata={"entity_type": "service", "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.55)
 
         # Hydrate memory + ground truth in parallel
         memories, service = await asyncio.gather(
@@ -33,7 +55,8 @@ class DesignStage(BaseStage):
             self.context.query_entity("service", "svc_auth"),
         )
 
-        # Populate task with the hydrated state
+        # Preserve any operator_feedback already in the bundle
+        preserved_feedback = task.context_bundle.get("operator_feedback")
         task.memory_provenance = [
             MemoryProvenance(
                 text=m["text"],
@@ -43,14 +66,14 @@ class DesignStage(BaseStage):
             for m in memories
         ]
         task.context_bundle = {"service": service, "memories_retrieved": len(memories)}
-
-        events: list[StageEvent] = []
+        if preserved_feedback:
+            task.context_bundle["operator_feedback"] = preserved_feedback
 
         events.append(
-            self._emit_event(
+            await self._emit_event(
                 task=task,
                 agent="Opus 4.6",
-                action="sketched architecture",
+                action=f"sketching architecture against {service['name']}",
                 metadata={
                     "memory_count": len(memories),
                     "service": service["name"],
@@ -58,29 +81,38 @@ class DesignStage(BaseStage):
                 },
             )
         )
+        await asyncio.sleep(0.7)
 
+        scaffolded = (
+            "auth/middleware.py, tests/auth/"
+            if task.type.value == "code"
+            else "drafts/postmortem-TKT-002.md"
+        )
         events.append(
-            self._emit_event(
+            await self._emit_event(
                 task=task,
                 agent="Codex",
-                action="scaffolded files in worktree",
-                metadata={
-                    "files": "auth/middleware.py, tests/auth/" if task.type.value == "code" else "drafts/email.md",
-                    "status": "PASS",
-                },
+                action=f"scaffolding → {scaffolded}",
+                metadata={"files": scaffolded, "status": "PASS"},
             )
         )
+        await asyncio.sleep(0.7)
 
         events.append(
-            self._emit_event(
+            await self._emit_event(
                 task=task,
                 agent="Gemini",
-                action="reviewed sketch",
+                action="reviewing sketch for consistency",
                 metadata={
                     "verdict": "approved",
                     "status": "PASS",
                 },
             )
         )
+
+        # Stream the link out on the final event so the card can open
+        # the full design markdown.
+        events[-1].artifacts.append(render_and_save(task, "design"))
+        await asyncio.sleep(0.55)
 
         return events

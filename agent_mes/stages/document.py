@@ -4,6 +4,9 @@ it to long-term memory (Redis) so future Plan stages can retrieve it.
 
 from __future__ import annotations
 
+import asyncio
+
+from agent_mes.artifacts import render_and_save
 from agent_mes.interfaces import RedisMemoryProtocol
 from agent_mes.schema import Artifact, MESTask, StageEnum, StageEvent
 from agent_mes.stages.base import BaseStage
@@ -18,6 +21,17 @@ class DocumentStage(BaseStage):
 
     async def execute(self, task: MESTask) -> list[StageEvent]:
         task.current_stage = StageEnum.DOCUMENT
+        events: list[StageEvent] = []
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Redis",
+                action=f"composing decision log from {len(task.events)} events",
+                metadata={"event_count": len(task.events), "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.7)
 
         # Build decision log from events
         log_lines = [f"Task: {task.id} ({task.type.value})", f"Intent: {task.intent}"]
@@ -30,6 +44,24 @@ class DocumentStage(BaseStage):
             ev.metadata.get("status") == "DRIFT" for ev in task.events
         )
 
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Redis",
+                action=(
+                    "tagging lesson as don't-repeat (drift seen)"
+                    if had_drift
+                    else f"tagging lesson → topics: {task.type.value}, task_completion"
+                ),
+                metadata={
+                    "topics": [task.type.value, "task_completion"],
+                    "negative_constraint": had_drift,
+                    "status": "RUN",
+                },
+            )
+        )
+        await asyncio.sleep(0.7)
+
         lesson_id = await self.redis.write_lesson(
             text=decision_log,
             topics=[task.type.value, "task_completion"],
@@ -37,17 +69,22 @@ class DocumentStage(BaseStage):
             negative_constraint=had_drift,
         )
 
-        event = self._emit_event(
-            task=task,
-            agent=self.AGENT,
-            action=f"lesson written: {lesson_id}",
-            metadata={
-                "lesson_id": lesson_id,
-                "negative_constraint": had_drift,
-                "status": "PASS",
-            },
-            artifacts=[
-                Artifact(type="memory", ref=lesson_id, summary="long-term lesson"),
-            ],
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Redis",
+                action=f"lesson written: {lesson_id}",
+                metadata={
+                    "lesson_id": lesson_id,
+                    "log_bytes": len(decision_log),
+                    "negative_constraint": had_drift,
+                    "status": "PASS",
+                },
+                artifacts=[
+                    Artifact(type="memory", ref=lesson_id, summary="long-term lesson"),
+                ],
+            )
         )
-        return [event]
+        events[-1].artifacts.append(render_and_save(task, "document"))
+        await asyncio.sleep(0.6)
+        return events

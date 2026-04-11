@@ -13,38 +13,343 @@
       <h1>AgentMES</h1>
       <span class="tagline">manufacturing execution for autonomous agents</span>
     </div>
-    <div class="state-indicator" id="state-indicator">ready — press Launch</div>
-    <button id="launch-btn" class="launch-btn">▶ Launch Pipeline</button>
+    <div class="state-indicator" id="state-indicator">ready — click Start on a ticket</div>
+    <button id="reset-btn" class="reset-btn" type="button">↺ Reset</button>
     <a href="/replay" class="replay-link">↻ asciinema replay</a>
   </header>
 
+  <section class="workflow-intro">
+    <div class="intro-headline">
+      <span class="intro-eyebrow">AgentMES</span>
+      <span class="intro-title">Manufacturing Execution System for Autonomous Agents</span>
+    </div>
+
+    <div class="intro-mes">
+      <div class="intro-mes-col">
+        <div class="intro-mes-label">Factory MES</div>
+        <p>
+          In manufacturing, a <strong>Manufacturing Execution System</strong> is the real-time control layer between ERP (business planning) and the shop floor. It tracks every part as it moves through workstations, logs receipts at each station (operator, machine parameters, QA pass/fail), routes parts to <em>rework</em> when they fail a gate, and exposes the whole state to operators via a visual kanban.
+        </p>
+      </div>
+      <div class="intro-mes-arrow" aria-hidden="true">→</div>
+      <div class="intro-mes-col">
+        <div class="intro-mes-label">Agent MES</div>
+        <p>
+          Here the <strong>parts</strong> are tickets (MESTask). The <strong>workstations</strong> are the 7 stages below. The <strong>receipts</strong> are the events streaming inside each card — every action gets a timestamp, an agent label, structured metadata, and a link to a full technical artifact. The <strong>rework route</strong> is the Review gate's Reject + Re-plan button, which sends the ticket back to Stage 1 with operator feedback baked into context.
+        </p>
+      </div>
+    </div>
+
+    <p class="intro-body">
+      Seven stages. <strong>Five lanes are pure agent throughput</strong> (1–4 and 6). <strong>Two lanes require human judgment</strong> —
+      <span class="intro-review">lane 5 Review</span> (catches memory drift, operators can re-plan with feedback)
+      and <span class="intro-review">lane 7 Deploy &amp; Maintain</span> (ship-it gate for production code changes).
+      Every stage below logs real receipts and links out to a full technical artifact.
+    </p>
+
+    <section class="sponsor-stack">
+      <div class="sponsor-stack-head">
+        <span class="sponsor-stack-eyebrow">Sponsor stack</span>
+        <span class="sponsor-stack-sub">how Blaxel / Redis / Codex actually show up in the pipeline</span>
+      </div>
+      <div class="sponsor-stack-grid">
+        <div class="sponsor-row">
+          <span class="stack-badge stack-blaxel">Blaxel</span>
+          <div class="sponsor-role">
+            <strong>Sandbox microVMs with enforced blast radius.</strong>
+            Stage 4 (Test) spins one up per task for the self-heal loop; egress kill fires on iter 2 when a check tries to reach <code>evil.example.com</code>. Stage 7 (Deploy) parks a standby sandbox for fast rollback.
+          </div>
+          <div class="sponsor-stages">→ stages <strong>4</strong>, <strong>7</strong></div>
+        </div>
+        <div class="sponsor-row">
+          <span class="stack-badge stack-redis">Redis Agent Memory</span>
+          <div class="sponsor-role">
+            <strong>Long-term semantic memory over Redis Streams.</strong>
+            Stage 2 (Design) calls <code>hydrate(query, session_id)</code> to pull related lessons. Stage 5 (Review) decrements confidence on drift. Stage 6 (Document) calls <code>write_lesson(text, topics, negative_constraint)</code> which <code>XADD</code>s to <code>lessons:long_term</code>. Stage 7 logs a monitoring breadcrumb.
+          </div>
+          <div class="sponsor-stages">→ stages <strong>2</strong>, <strong>5</strong>, <strong>6</strong>, <strong>7</strong></div>
+        </div>
+        <div class="sponsor-row">
+          <span class="stack-badge stack-context">Redis Context Surfaces</span>
+          <div class="sponsor-role">
+            <strong>Schema-typed ground-truth retrieval.</strong>
+            Stage 2 (Design) calls <code>query_entity("service", "svc_auth")</code> for the canonical service record. Stage 5 (Review) calls <code>verify_claim(claim, entity_type)</code> on every hydrated memory — this is what catches the drift.
+          </div>
+          <div class="sponsor-stages">→ stages <strong>2</strong>, <strong>5</strong></div>
+        </div>
+        <div class="sponsor-row">
+          <span class="stack-badge stack-codex">OpenAI Codex</span>
+          <div class="sponsor-role">
+            <strong>LLM for parsing, scaffolding, and diff writing.</strong>
+            Stage 1 (Plan) parses the Slack text and extracts intent + ACs + blast radius. Stage 2 (Design) scaffolds target files into a worktree branch. Stage 3 (Build) writes the actual unified diff for CODE tickets or assembles the full postmortem body for SIMPLE tickets.
+          </div>
+          <div class="sponsor-stages">→ stages <strong>1</strong>, <strong>2</strong>, <strong>3</strong></div>
+        </div>
+        <div class="sponsor-row">
+          <span class="stack-badge stack-github">GitHub</span>
+          <div class="sponsor-role">
+            <strong>PR pipeline endpoint.</strong>
+            Stage 7 (Deploy) assembles the PR body from every stage event as receipts, then <code>gh pr create</code>s against <code>benikigai/agent-mes</code>. CODE tickets only — the human ship-it gate blocks before this runs.
+          </div>
+          <div class="sponsor-stages">→ stage <strong>7</strong></div>
+        </div>
+      </div>
+    </section>
+    <details class="intro-details" open>
+      <summary>▸ what happens at each stage</summary>
+      <div class="stage-detail-grid">
+        <div class="stage-detail">
+          <div class="stage-detail-head">
+            <span class="stage-detail-num">1</span>
+            <span class="stage-detail-icon" aria-hidden="true">☑</span>
+            <span class="stage-detail-name">Plan</span>
+            <span class="stage-detail-tag tag-auto">auto</span>
+          </div>
+          <p class="stage-detail-body">
+            <strong>Opus 4.6</strong> parses the raw Slack message, classifies the ticket (code/simple), extracts acceptance criteria, and defines blast radius. On re-plan loops, prior operator feedback is threaded in at the top of the context bundle so the re-run acknowledges it.
+          </p>
+          <p class="stage-detail-output">→ plan markdown · ACs · blast radius · feedback history</p>
+        </div>
+
+        <div class="stage-detail">
+          <div class="stage-detail-head">
+            <span class="stage-detail-num">2</span>
+            <span class="stage-detail-icon" aria-hidden="true">✦</span>
+            <span class="stage-detail-name">Design</span>
+            <span class="stage-detail-tag tag-auto">auto</span>
+          </div>
+          <p class="stage-detail-body">
+            <strong>Redis</strong> hydrates relevant memories, <strong>Context Surfaces</strong> pulls ground-truth service metadata in parallel via <code>asyncio.gather</code>. <strong>Opus 4.6</strong> sketches architecture, <strong>Codex</strong> scaffolds files in a worktree, <strong>Gemini</strong> reviews the sketch for consistency.
+          </p>
+          <p class="stage-detail-output">→ design brief · memory citations · target files · sketch verdict</p>
+        </div>
+
+        <div class="stage-detail">
+          <div class="stage-detail-head">
+            <span class="stage-detail-num">3</span>
+            <span class="stage-detail-icon" aria-hidden="true">⚒</span>
+            <span class="stage-detail-name">Build</span>
+            <span class="stage-detail-tag tag-auto">auto</span>
+          </div>
+          <p class="stage-detail-body">
+            <strong>Codex</strong> opens a worktree branch, reads ACs + the context bundle, drafts the fix pattern, and writes the actual output. CODE tickets get a real unified diff; SIMPLE tickets get a full markdown body assembled from skeleton + timeline + 5 whys + action items.
+          </p>
+          <p class="stage-detail-output">→ diff or draft · file path · line counts · rationale</p>
+        </div>
+
+        <div class="stage-detail">
+          <div class="stage-detail-head">
+            <span class="stage-detail-num">4</span>
+            <span class="stage-detail-icon" aria-hidden="true">⌕</span>
+            <span class="stage-detail-name">Test</span>
+            <span class="stage-detail-tag tag-auto">auto</span>
+          </div>
+          <p class="stage-detail-body">
+            <strong>Blaxel</strong> spins up a sandbox microVM with Plan's blast-radius constraints, copies the diff, installs deps, runs the ACs as a self-heal loop. <strong>Gemini</strong> interprets outputs. Egress kill fires on iter 2 to prove the blast radius actually holds.
+          </p>
+          <p class="stage-detail-output">→ iteration log · fail → kill → pass trajectory · violation receipt</p>
+        </div>
+
+        <div class="stage-detail stage-detail-hero">
+          <div class="stage-detail-head">
+            <span class="stage-detail-num">5</span>
+            <span class="stage-detail-icon" aria-hidden="true">◉</span>
+            <span class="stage-detail-name">Review</span>
+            <span class="stage-detail-tag tag-human">● HUMAN</span>
+          </div>
+          <p class="stage-detail-body">
+            <strong>Opus 4.6</strong> cross-checks every hydrated memory against <strong>Context Surfaces</strong> ground truth. Contradictions fire a DRIFT event and the card blocks on a <strong>real human gate</strong>. Operators can Approve, or send Feedback to re-plan from Stage 1 with the correction baked into context.
+          </p>
+          <p class="stage-detail-output">→ drift report · human verdict · (optional) re-plan trigger</p>
+        </div>
+
+        <div class="stage-detail">
+          <div class="stage-detail-head">
+            <span class="stage-detail-num">6</span>
+            <span class="stage-detail-icon" aria-hidden="true">✎</span>
+            <span class="stage-detail-name">Document</span>
+            <span class="stage-detail-tag tag-auto">auto</span>
+          </div>
+          <p class="stage-detail-body">
+            <strong>Redis</strong> composes a decision log from every event in the run, tags it with topics, and writes it as a long-term lesson. When drift was caught in Stage 5, the lesson becomes a <em>negative constraint</em> so future Plan stages steer around it.
+          </p>
+          <p class="stage-detail-output">→ decision log · lesson id · topics · negative-constraint flag</p>
+        </div>
+
+        <div class="stage-detail stage-detail-hero">
+          <div class="stage-detail-head">
+            <span class="stage-detail-num">7</span>
+            <span class="stage-detail-icon" aria-hidden="true">⏱</span>
+            <span class="stage-detail-name">Deploy &amp; Maintain</span>
+            <span class="stage-detail-tag tag-human">● HUMAN</span>
+          </div>
+          <p class="stage-detail-body">
+            For CODE tickets, the card blocks on a <strong>second human gate</strong> — shipping to production needs explicit approval. On approve, <strong>GitHub</strong> assembles the PR body from stage receipts. <strong>Blaxel</strong> parks a standby sandbox for fast rollback. <strong>Redis</strong> logs a monitoring breadcrumb.
+          </p>
+          <p class="stage-detail-output">→ PR url · standby sandbox · monitoring log</p>
+        </div>
+      </div>
+    </details>
+  </section>
+
   <main class="board" id="board">
     <div class="column" data-stage="plan">
-      <div class="col-header">PLAN</div>
+      <div class="lane-header">
+        <div class="lane-head-top">
+          <span class="lane-num">1</span>
+          <span class="lane-icon" aria-hidden="true">☑</span>
+          <span class="lane-name">Plan</span>
+        </div>
+        <div class="lane-zone lane-zone-agent">
+          <div class="lane-label">Agents do</div>
+          <div class="lane-text">Parse inbound, classify ticket, extract ACs + blast radius</div>
+        </div>
+        <div class="lane-zone lane-zone-stack">
+          <div class="lane-label">Uses</div>
+          <div class="lane-stack">
+            <span class="stack-badge stack-opus">Opus 4.6</span>
+          </div>
+        </div>
+      </div>
       <div class="cards" id="col-plan"></div>
     </div>
     <div class="column" data-stage="design">
-      <div class="col-header">DESIGN</div>
+      <div class="lane-header">
+        <div class="lane-head-top">
+          <span class="lane-num">2</span>
+          <span class="lane-icon" aria-hidden="true">✦</span>
+          <span class="lane-name">Design</span>
+        </div>
+        <div class="lane-zone lane-zone-agent">
+          <div class="lane-label">Agents do</div>
+          <div class="lane-text">Hydrate memory, query ground truth, three-agent sketch</div>
+        </div>
+        <div class="lane-zone lane-zone-stack">
+          <div class="lane-label">Uses</div>
+          <div class="lane-stack">
+            <span class="stack-badge stack-redis">Redis</span>
+            <span class="stack-badge stack-context">Context</span>
+            <span class="stack-badge stack-opus">Opus 4.6</span>
+            <span class="stack-badge stack-codex">Codex</span>
+            <span class="stack-badge stack-gemini">Gemini</span>
+          </div>
+        </div>
+      </div>
       <div class="cards" id="col-design"></div>
     </div>
     <div class="column" data-stage="build">
-      <div class="col-header">BUILD</div>
+      <div class="lane-header">
+        <div class="lane-head-top">
+          <span class="lane-num">3</span>
+          <span class="lane-icon" aria-hidden="true">⚒</span>
+          <span class="lane-name">Build</span>
+        </div>
+        <div class="lane-zone lane-zone-agent">
+          <div class="lane-label">Agents do</div>
+          <div class="lane-text">Open worktree, draft pattern, write diff or draft body</div>
+        </div>
+        <div class="lane-zone lane-zone-stack">
+          <div class="lane-label">Uses</div>
+          <div class="lane-stack">
+            <span class="stack-badge stack-codex">Codex</span>
+          </div>
+        </div>
+      </div>
       <div class="cards" id="col-build"></div>
     </div>
     <div class="column" data-stage="test">
-      <div class="col-header">TEST</div>
+      <div class="lane-header">
+        <div class="lane-head-top">
+          <span class="lane-num">4</span>
+          <span class="lane-icon" aria-hidden="true">⌕</span>
+          <span class="lane-name">Test</span>
+        </div>
+        <div class="lane-zone lane-zone-agent">
+          <div class="lane-label">Agents do</div>
+          <div class="lane-text">Sandbox, self-heal loop, blast-radius enforcement</div>
+        </div>
+        <div class="lane-zone lane-zone-stack">
+          <div class="lane-label">Uses</div>
+          <div class="lane-stack">
+            <span class="stack-badge stack-blaxel">Blaxel</span>
+            <span class="stack-badge stack-gemini">Gemini</span>
+          </div>
+        </div>
+      </div>
       <div class="cards" id="col-test"></div>
     </div>
-    <div class="column" data-stage="review">
-      <div class="col-header">REVIEW</div>
+    <div class="column column-hero" data-stage="review">
+      <div class="lane-header">
+        <div class="lane-head-top">
+          <span class="lane-num">5</span>
+          <span class="lane-icon" aria-hidden="true">◉</span>
+          <span class="lane-name">Review</span>
+        </div>
+        <div class="lane-zone lane-zone-agent">
+          <div class="lane-label">Agents do</div>
+          <div class="lane-text">Cross-check memories vs ground truth, surface drift</div>
+        </div>
+        <div class="lane-zone lane-zone-engineer">
+          <div class="lane-label">Engineers own <span class="gate-chip">● HUMAN GATE</span></div>
+          <div class="lane-text">Approve the fix, or reject with feedback to re-plan</div>
+        </div>
+        <div class="lane-zone lane-zone-stack">
+          <div class="lane-label">Uses</div>
+          <div class="lane-stack">
+            <span class="stack-badge stack-redis">Redis</span>
+            <span class="stack-badge stack-context">Context</span>
+            <span class="stack-badge stack-opus">Opus 4.6</span>
+            <span class="stack-badge stack-human">Human</span>
+          </div>
+        </div>
+      </div>
       <div class="cards" id="col-review"></div>
     </div>
     <div class="column" data-stage="document">
-      <div class="col-header">DOCUMENT</div>
+      <div class="lane-header">
+        <div class="lane-head-top">
+          <span class="lane-num">6</span>
+          <span class="lane-icon" aria-hidden="true">✎</span>
+          <span class="lane-name">Document</span>
+        </div>
+        <div class="lane-zone lane-zone-agent">
+          <div class="lane-label">Agents do</div>
+          <div class="lane-text">Compose decision log, tag topics, write lesson to Redis</div>
+        </div>
+        <div class="lane-zone lane-zone-stack">
+          <div class="lane-label">Uses</div>
+          <div class="lane-stack">
+            <span class="stack-badge stack-redis">Redis</span>
+          </div>
+        </div>
+      </div>
       <div class="cards" id="col-document"></div>
     </div>
-    <div class="column" data-stage="deploy">
-      <div class="col-header">DEPLOY/MAINTAIN</div>
+    <div class="column column-hero" data-stage="deploy">
+      <div class="lane-header">
+        <div class="lane-head-top">
+          <span class="lane-num">7</span>
+          <span class="lane-icon" aria-hidden="true">⏱</span>
+          <span class="lane-name">Deploy &amp; Maintain</span>
+        </div>
+        <div class="lane-zone lane-zone-agent">
+          <div class="lane-label">Agents do</div>
+          <div class="lane-text">Assemble PR body, park standby sandbox, log breadcrumb</div>
+        </div>
+        <div class="lane-zone lane-zone-engineer">
+          <div class="lane-label">Engineers own <span class="gate-chip">● HUMAN GATE</span></div>
+          <div class="lane-text">Ship it — explicit approval before the PR opens (CODE only)</div>
+        </div>
+        <div class="lane-zone lane-zone-stack">
+          <div class="lane-label">Uses</div>
+          <div class="lane-stack">
+            <span class="stack-badge stack-github">GitHub</span>
+            <span class="stack-badge stack-blaxel">Blaxel</span>
+            <span class="stack-badge stack-redis">Redis</span>
+            <span class="stack-badge stack-human">Human</span>
+          </div>
+        </div>
+      </div>
       <div class="cards" id="col-deploy"></div>
     </div>
   </main>
