@@ -50,6 +50,23 @@ Already installed via `context-surfaces` transitive dep. Faster to ship in 6h. `
 ### D8 — Codex Build replay via parsed `.cast` JSONL
 Parse `recordings/codex_build_run.cast` line-by-line and write to a Rich Panel inside the Build column. Speed multiplier configurable. Real Codex run in H7 generates the recording; if it fails or takes too long, ship a hand-crafted `.cast` fixture.
 
+### D9 — Secrets via vault CLI + .env.tpl pattern
+Code reads credentials from `os.environ` only — never plaintext, never committed. The runtime activation pattern uses the vault's `op run --env-file=.env.tpl --` wrapper:
+
+```bash
+# .env.tpl (committed — no secrets, just op:// references)
+BLAXEL_API_KEY=op://Vault/Blaxel/credential
+REDIS_URL=op://Vault/Redis Agent Memory/url
+REDIS_PASSWORD=op://Vault/Redis Agent Memory/password
+REDIS_CTX_ADMIN_KEY=op://Vault/Redis Context Surfaces/admin_key
+WORDWARE_API_KEY=op://Vault/Wordware/api_key
+OPENAI_API_KEY=op://Vault/OpenAI Codex/api_key
+```
+
+Run with: `op run --env-file=.env.tpl -- agent-mes demo`
+
+The exact `op://vault/item/field` paths must match how Ben actually filed the items in the vault — he confirms and edits `.env.tpl` once the file is created in T1. **`.env.tpl` is committed; `.env` is gitignored.** Stubs need ZERO env vars — only the swap-in real impls do.
+
 ---
 
 ## Three Es Options Analysis
@@ -173,12 +190,13 @@ Seven vertical stage columns. Cards flow left to right. **Receipts are embedded 
 ## Tasks
 
 ### Task 1: Project scaffolding
-**Objective:** Stand up the Python package structure, build/test tooling, and entrypoints so subsequent tasks have a place to drop files.
+**Objective:** Stand up the Python package structure, build/test tooling, entrypoints, AND the `.env.tpl` vault reference template so subsequent tasks have a place to drop files.
 **Complexity:** Simple
 **Dependencies:** None
 **Files to change:**
 - `pyproject.toml` (new)
 - `Makefile` (new)
+- `.env.tpl` (new — committed, contains op:// references only, no secrets)
 - `agent_mes/__init__.py` (new)
 - `agent_mes/integrations/__init__.py` (new)
 - `agent_mes/integrations/stubs/__init__.py` (new)
@@ -192,6 +210,7 @@ Seven vertical stage columns. Cards flow left to right. **Receipts are embedded 
 - `python -m agent_mes --help` runs (even if it just prints usage)
 - `make test` runs pytest with no collected tests successfully
 - `pyproject.toml` declares deps: `rich`, `pydantic>=2`, `httpx`, `typer`, `pytest`
+- `.env.tpl` exists with placeholder lines for `BLAXEL_API_KEY`, `REDIS_URL`, `REDIS_PASSWORD`, `REDIS_CTX_ADMIN_KEY`, `WORDWARE_API_KEY`, `OPENAI_API_KEY` referencing `op://Vault/<Item>/<field>` paths (Ben edits the exact item names after T1)
 **Test plan:**
 - Smoke: `python -c "import agent_mes; print(agent_mes.__name__)"` returns `agent_mes`
 - Smoke: `make test` exits 0
