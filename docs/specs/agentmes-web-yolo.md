@@ -1,7 +1,7 @@
 # Yolo: AgentMES Web UI
 **Spec:** docs/specs/agentmes-web.md
 
-- [ ] Task 1: Add fastapi dep + scaffold agent_mes/web/ package — SIMPLE
+- [x] Task 1: Add fastapi dep + scaffold agent_mes/web/ package — SIMPLE
 - [ ] Task 2: agent_mes/web/events.py — EventBroker — SIMPLE
 - [ ] Task 3: agent_mes/web/gates.py — GateRegistry — SIMPLE
 - [ ] Task 4: Extend agent_mes/stages/review.py with optional gate_provider — SIMPLE
