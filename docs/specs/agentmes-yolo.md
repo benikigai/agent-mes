@@ -23,4 +23,4 @@
 - [x] Task 20: agent_mes/ui/dashboard.py — live dashboard — COMPLEX
 - [x] Task 21: agent_mes/cli.py + __main__.py — CLI entrypoint — SIMPLE
 - [x] Task 22: tests/test_smoke.py — end-to-end smoke test — SIMPLE
-- [ ] Task 23: README.md + polish — SIMPLE
+- [x] Task 23: README.md + polish — SIMPLE
