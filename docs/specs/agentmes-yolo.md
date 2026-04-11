@@ -2,7 +2,7 @@
 **Spec:** docs/specs/agentmes.md
 
 - [x] Task 1: Project scaffolding — SIMPLE
-- [ ] Task 2: agent_mes/schema.py — Pydantic models — MODERATE
+- [x] Task 2: agent_mes/schema.py — Pydantic models — MODERATE
 - [ ] Task 3: agent_mes/interfaces.py — Protocol classes — SIMPLE
 - [ ] Task 4: agent_mes/integrations/stubs/redis_memory.py — MODERATE
 - [ ] Task 5: agent_mes/integrations/stubs/context_retriever.py — MODERATE
