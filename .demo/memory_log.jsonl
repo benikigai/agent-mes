@@ -1,0 +1,3 @@
+{"id": "mem_4471", "text": "Task: TKT-001 (code)\nIntent: raise the OAuth /v2 rate limit\n  [plan] Opus 4.6: classified=code\n  [review] Opus 4.6: memory drift", "topics": ["code", "task_completion"], "user_id": "sarah", "negative_constraint": true, "written_at": "2026-04-11T13:55:04.559786"}
+{"id": "mem_4471", "text": "deploy event for TKT-001: raise the OAuth /v2 rate limit", "topics": ["deploy", "monitoring"], "user_id": "sarah", "negative_constraint": false, "written_at": "2026-04-11T13:55:04.563247"}
+{"id": "mem_4471", "text": "deploy event for TKT-002: draft email", "topics": ["deploy", "monitoring"], "user_id": "marcus", "negative_constraint": false, "written_at": "2026-04-11T13:55:04.565653"}
