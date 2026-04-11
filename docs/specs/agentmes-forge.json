@@ -1,0 +1,186 @@
+[
+  {
+    "id": 1,
+    "category": "simple",
+    "description": "Project scaffolding — create pyproject.toml (deps: rich, pydantic>=2, httpx, typer, pytest), Makefile (test/run targets), package directories agent_mes/{integrations/stubs,stages,ui,demo}, tests/, recordings/, .demo/. Add __init__.py to each package. python -m agent_mes --help must run.",
+    "verify": "python -c 'import agent_mes' && make test",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 2,
+    "category": "moderate",
+    "description": "agent_mes/schema.py — Pydantic v2 models: TicketType (StrEnum SIMPLE/CODE), StageEnum (PLAN/DESIGN/BUILD/TEST/REVIEW/DOCUMENT/DEPLOY), StageResult (PASS/FAIL/BLOCK_FOR_HUMAN/KILLED), BlastRadius, AcceptanceCriterion, MemoryProvenance, Artifact, StageEvent, HumanGate, MESTask. Match function signatures from docs/specs/agentmes.md verbatim — this is Vish's contract.",
+    "verify": "pytest tests/test_schema.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 3,
+    "category": "simple",
+    "description": "agent_mes/interfaces.py — Protocol classes for swappable backends: RedisMemoryProtocol (hydrate, cross_check, write_lesson, seed_demo_memories), ContextRetrieverProtocol (query_entity, list_related, verify_claim), BlaxelVerifierProtocol (create_sandbox, run_check, self_heal_loop, detect_egress_violation), WordwarePlannerProtocol, CodexBuilderProtocol. All async, signatures from spec.",
+    "verify": "python -c 'from agent_mes.interfaces import RedisMemoryProtocol, ContextRetrieverProtocol, BlaxelVerifierProtocol, WordwarePlannerProtocol, CodexBuilderProtocol'",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 4,
+    "category": "moderate",
+    "description": "agent_mes/integrations/stubs/redis_memory.py — StubRedisMemory implements RedisMemoryProtocol. hydrate returns 3 fixture memories from seed_memories.py filtered by query string match. cross_check returns contradicted=True with the auth rate limiter contradiction if the claim contains 'auth rate limit'. write_lesson appends to .demo/memory_log.jsonl and returns mem_NNNN id. Choreographed and deterministic — same beats every run.",
+    "verify": "pytest tests/test_stub_redis_memory.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 5,
+    "category": "moderate",
+    "description": "agent_mes/integrations/stubs/context_retriever.py — StubContextRetriever implements ContextRetrieverProtocol against the Heliograph fixtures from demo/seed_entities.py. verify_claim with the auth rate limiter claim returns verified=False with discrepancy='endpoint mismatch /v1/login vs /v2/oauth' — this is the structural contradiction Stage 5 catches.",
+    "verify": "pytest tests/test_stub_context_retriever.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 6,
+    "category": "complex",
+    "description": "agent_mes/integrations/stubs/blaxel.py — StubBlaxelVerifier implements BlaxelVerifierProtocol. create_sandbox returns StubSandbox with id and iteration counter. self_heal_loop orchestrates 3 deterministic iterations: iter 1 fails on import (via poison_payload), iter 2 fails on egress kill (detect_egress_violation returns destination=evil.example.com, killed_in_ms=23), iter 3 passes. THE demo gold moment — must be reliable.",
+    "verify": "pytest tests/test_stub_blaxel.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 7,
+    "category": "simple",
+    "description": "agent_mes/integrations/wordware.py — WordwarePlanner with mode=stub|real. Stub mode returns hardcoded MESTask first-stage payload from demo/fake_slack.py for TKT-001 (OAuth fix → CODE) and TKT-002 (status email → SIMPLE). Real mode placeholder POSTs to flow_url (used after H7 if Wordware flow is built).",
+    "verify": "pytest tests/test_wordware.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 8,
+    "category": "moderate",
+    "description": "agent_mes/integrations/codex.py — CodexReplayBuilder implements CodexBuilderProtocol. Constructor takes cast_path and speed=8.0. build() is an async generator that parses recordings/codex_build_run.cast (JSONL format) and yields output lines at scaled timing. Also commit a hand-crafted recordings/codex_build_run.cast with ~30 lines of plausible Codex output (file edits, test runs, PR description).",
+    "verify": "pytest tests/test_codex.py -x && python -c 'import json; [json.loads(l) for l in open(\"recordings/codex_build_run.cast\")]'",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 9,
+    "category": "simple",
+    "description": "agent_mes/demo/ fixtures — fake_slack.py (TKT-001 OAuth fix CODE + TKT-002 status email SIMPLE), seed_memories.py (10 memories incl the adversary 'auth rate limiter fixed last month conf 0.9'), seed_entities.py (Heliograph: 4 services, 8 users, 12 incidents incl inc_113 with endpoint=/v1/login, 6 tickets incl tkt_982 about /v2/oauth), poison_payload.py (raises ImportError on import).",
+    "verify": "pytest tests/test_demo_fixtures.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 10,
+    "category": "simple",
+    "description": "agent_mes/stages/base.py — BaseStage(ABC) with STAGE: StageEnum (subclass overrides), abstract async execute(task) -> list[StageEvent], helpers _emit_event() and _branch_by_type().",
+    "verify": "python -c 'from agent_mes.stages.base import BaseStage; assert hasattr(BaseStage, \"execute\")'",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 11,
+    "category": "simple",
+    "description": "agent_mes/stages/plan.py — PlanStage(BaseStage) STAGE=PLAN AGENT='Opus 4.6'. Constructor takes wordware: WordwarePlannerProtocol. execute calls wordware.plan_from_slack, populates intent/AC/blast_radius, classifies type via keyword heuristic (fix/implement/refactor/bug → CODE; else SIMPLE). Emits 1 StageEvent with classified type. Records HumanGate auto-approved after 2s.",
+    "verify": "pytest tests/test_plan_stage.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 12,
+    "category": "moderate",
+    "description": "agent_mes/stages/design.py — DesignStage(BaseStage) STAGE=DESIGN AGENTS=['Opus 4.6','Codex','Gemini']. Constructor takes redis and context. execute calls redis.hydrate and context.query_entity in parallel via asyncio.gather, populates memory_provenance and context_bundle. Emits 3 StageEvents — Opus (sketched architecture), Codex (scaffolded files), Gemini (reviewed sketch) — each with typed metadata.",
+    "verify": "pytest tests/test_design_stage.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 13,
+    "category": "moderate",
+    "description": "agent_mes/stages/build.py — BuildStage(BaseStage) STAGE=BUILD AGENT='Codex'. Constructor takes codex: CodexBuilderProtocol. For CODE: streams cast lines via codex.build, captures diff metadata, emits 1 StageEvent with lines_added/lines_removed/files_touched. For SIMPLE: returns a hardcoded email draft, emits 1 StageEvent with recipient/word_count. Both produce an Artifact.",
+    "verify": "pytest tests/test_build_stage.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 14,
+    "category": "complex",
+    "description": "agent_mes/stages/test.py — TestStage(BaseStage) STAGE=TEST AGENT='Gemini'. Constructor takes blaxel: BlaxelVerifierProtocol. For CODE: calls blaxel.create_sandbox then blaxel.self_heal_loop with 3 iterations; emits 1 StageEvent per iteration with action='iter N: <result>'. The egress kill iteration emits action='iter 2: KILLED — egress to evil.example.com (23ms)' and metadata.violation. For SIMPLE: 1s pause, single StageEvent action='grammar+tone OK'.",
+    "verify": "pytest tests/test_test_stage.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 15,
+    "category": "complex",
+    "description": "agent_mes/stages/review.py — ReviewStage(BaseStage) STAGE=REVIEW AGENT='Opus 4.6'. Constructor takes redis and context. For each memory in task.memory_provenance: calls context.verify_claim — if verified=False, emits StageEvent action='DRIFT: memory says X, ground truth says Y' and drops memory.confidence. For TKT-001: drift catch fires, emits HumanGate event 'awaiting approval... [APPROVE]' and pauses for input(). Skip input() if AGENTMES_AUTO_APPROVE=1 env var set.",
+    "verify": "AGENTMES_AUTO_APPROVE=1 pytest tests/test_review_stage.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 16,
+    "category": "simple",
+    "description": "agent_mes/stages/document.py — DocumentStage(BaseStage) STAGE=DOCUMENT AGENT='Redis'. Constructor takes redis: RedisMemoryProtocol. execute builds a decision log string from task.events, calls redis.write_lesson with topics=[type, 'task_completion'] and negative_constraint=True for the corrected memory case. Emits 1 StageEvent with action='lesson written: <id>' and Artifact(type=memory).",
+    "verify": "pytest tests/test_document_stage.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 17,
+    "category": "moderate",
+    "description": "agent_mes/stages/deploy.py — DeployStage(BaseStage) STAGE=DEPLOY AGENT='GitHub+Blaxel+Redis'. Constructor takes redis and optional github_repo. For CODE: builds PR body from task.events, calls 'gh pr create --body-file <tmp> --title <title>' via subprocess (or prints if dry_run=True), captures PR URL. For SIMPLE: writes .demo/outputs/email-{task.id}.md. Both write monitoring breadcrumb to redis.write_lesson. Emits StageEvent with PR URL or file path Artifact. Sets task.status='merged'.",
+    "verify": "pytest tests/test_deploy_stage.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 18,
+    "category": "moderate",
+    "description": "agent_mes/pipeline.py — Pipeline class. Constructor takes 7 stage instances + events_callback: Callable[[StageEvent, MESTask], None]. async def run(task) runs each stage in order calling callback after each event. async def run_parallel(tasks) runs multiple via asyncio.gather. Handles BLOCK_FOR_HUMAN by pausing on the gate. Catches exceptions per stage and converts to StageResult.FAIL events instead of crashing.",
+    "verify": "pytest tests/test_pipeline.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 19,
+    "category": "moderate",
+    "description": "agent_mes/ui/lanes.py — Rich Layout (7 vertical columns) + DETAILED CHANGELOG card render. build_layout() returns Layout with header (size=3) and board split_row into 7 columns: plan/design/build/test/review/document/deploy. render_card(task) returns Panel with title=type-icon + ticket_id, body=detailed multi-line changelog: intent (bold), separator, then for each StageEnum that has events: '━ STAGE ━' header (cyan bold), then for each event: action line '{symbol} [{agent}] {action}' followed by indented metadata lines '   {key}: {val}' (dim) and artifact lines '   → {type}: {ref}' (green). Symbols: ✓ PASS, ✗ KILLED/FAIL, ⚠ DRIFT/WARN, ⏳ RUN. Border: blue=running, yellow=blocked, green=merged, red=killed. Final TKT-001 card body is ~30 lines. render_column(tasks) returns Panel containing Group of card Panels stacked vertically.",
+    "verify": "pytest tests/test_lanes.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 20,
+    "category": "complex",
+    "description": "agent_mes/ui/dashboard.py — Dashboard class. Constructor takes layout from lanes.build_layout() and tasks list. on_event(event, task) callback registered with pipeline holds an asyncio.Lock then re-renders ALL columns by grouping tasks by current_stage and calling render_column on each, then updating the layout regions. async def run(pipeline, tasks) wraps in 'with Live(layout, refresh_per_second=10):' and runs pipeline.run_parallel(tasks). Cards naturally grow as task.events accumulates. Card disappears from old column and appears in new column when stage transitions. Single asyncio.Lock around layout mutations. Header check warns if terminal smaller than 100x60.",
+    "verify": "AGENTMES_AUTO_APPROVE=1 timeout 60 python -m agent_mes demo --dry-run",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 21,
+    "category": "simple",
+    "description": "agent_mes/cli.py + agent_mes/__main__.py — typer CLI. 'agent-mes demo' constructs all stubs + stages + Pipeline + Dashboard then runs both fixture tickets in parallel. Flags: --real-redis (placeholder swap), --dry-run (no real PRs). 'agent-mes --help' works.",
+    "verify": "python -m agent_mes --help && AGENTMES_AUTO_APPROVE=1 timeout 60 python -m agent_mes demo --dry-run",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 22,
+    "category": "simple",
+    "description": "tests/test_smoke.py — End-to-end smoke test. Runs Pipeline.run_parallel with TKT-001 and TKT-002. Asserts: TKT-001 has ≥10 StageEvents incl iter 2 with violation.destination='evil.example.com' and Review event containing 'DRIFT'; TKT-002 has ≥7 StageEvents; both end with status='merged'. Uses AGENTMES_AUTO_APPROVE=1 and dry_run=True. Completes <30s.",
+    "verify": "AGENTMES_AUTO_APPROVE=1 pytest tests/test_smoke.py -x",
+    "passes": false,
+    "skipped": false
+  },
+  {
+    "id": 23,
+    "category": "simple",
+    "description": "README.md + polish — overwrite README with: elevator pitch (1 paragraph), install (pip install -e . from venv), run (agent-mes demo), the 2-lane × 7-column ASCII architecture diagram, sponsor credit line, link to docs/specs/agentmes.md. Capture docs/demo-screenshot.txt by running the demo and copying the output. Add submission checklist.",
+    "verify": "test -f README.md && grep -q 'AgentMES' README.md && grep -q 'sponsor' README.md",
+    "passes": false,
+    "skipped": false
+  }
+]
