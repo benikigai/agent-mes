@@ -4,9 +4,9 @@
 - [x] Task 1: Project scaffolding — SIMPLE
 - [x] Task 2: agent_mes/schema.py — Pydantic models — MODERATE
 - [x] Task 3: agent_mes/interfaces.py — Protocol classes — SIMPLE
-- [ ] Task 4: agent_mes/integrations/stubs/redis_memory.py — MODERATE
-- [ ] Task 5: agent_mes/integrations/stubs/context_retriever.py — MODERATE
-- [ ] Task 6: agent_mes/integrations/stubs/blaxel.py — COMPLEX
+- [x] Task 4: agent_mes/integrations/stubs/redis_memory.py — MODERATE
+- [x] Task 5: agent_mes/integrations/stubs/context_retriever.py — MODERATE
+- [x] Task 6: agent_mes/integrations/stubs/blaxel.py — COMPLEX
 - [ ] Task 7: agent_mes/integrations/wordware.py — stub + real flag — SIMPLE
 - [ ] Task 8: agent_mes/integrations/codex.py — asciinema replay player — MODERATE
 - [x] Task 9: agent_mes/demo/* — fixtures (fake_slack, seed_memories, poison_payload, seed_entities) — SIMPLE
