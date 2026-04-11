@@ -27,6 +27,12 @@ Both move through the same 7 stage columns. Receipts are tracked per ticket; a r
 ### D1 — Stub-first, interface-driven architecture
 All sponsor integrations are abstracted behind `Protocol` classes in `agent_mes/interfaces.py`. Default DI wires stubs (`agent_mes/integrations/stubs/`). Vish's real impls swap in at H6 via constructor injection. **Single-line import change.**
 
+**Context data layer lives in a separate package — [`benikigai/plushpalace-world`](https://github.com/benikigai/plushpalace-world).** AgentMES depends on the `ContextStore` Protocol defined in `plushpalace.query`. The package ships two concrete implementations — `plushpalace.stub_store.StubStore` (in-memory, loads YAML) and `plushpalace.redis_store.RedisStore` (Redis Stack: RedisJSON + RediSearch). Both satisfy the same Protocol and share tokenization / matching semantics so `test_query_parity.py` asserts byte-for-byte identical results for the same queries.
+
+`agent_mes/integrations/stubs/context_retriever.py` thinly wraps `StubStore`; `agent_mes/integrations/real/context_retriever.py` wraps `RedisStore`. The pipeline picks one based on `AGENTMES_USE_REDIS=1`. The demo runs with Redis enabled; /yolo smoke tests use the stub. When Vish lands real Blaxel + full Redis Context Surfaces at H6+, only `plushpalace.redis_store` changes — nothing in `agent_mes/` moves. This keeps the stub-first principle intact while letting the demo run against real Redis Stack on stage.
+
+PlushPalace Co. is a fictional DTC plushie e-commerce company — CEO Mark Chen, CTO Lin Park, 6 plushie SKUs led by the viral "Atticus the Axolotl", Shenzhen factory partner Wei Zhang, 4 historical incidents, 2 "smoking gun" postmortems with `status=open` action items. The drift-catch at Stage 5 Review fires against the prior open postmortems via `store.find_structural_matches(root_cause=..., status="open")`. Same query shape for both TKT-001 and TKT-002 — one mechanism, two payoffs.
+
 ### D2 — Seven vertical columns, cards flow left-to-right, receipts embedded IN the card
 TUI layout uses Rich's `Layout` primitive — `split_column` for header/board, then `split_row` inside board for the 7 stage columns. **Cards grow as they progress** — each StageEvent appends a line inside the card body. By the time a card lands in DEPLOY, it contains the full history of every stage. The card IS the receipt. No separate footer panel.
 
