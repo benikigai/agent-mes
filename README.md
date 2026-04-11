@@ -20,17 +20,46 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Run the demo
+## Two renderers, one pipeline
+
+AgentMES is **renderer-agnostic** — the same 7-stage orchestrator drives BOTH a terminal kanban (Rich) and a real interactive web kanban (FastAPI + SSE). Pick your surface:
+
+| Surface | Command | URL | When to use |
+|---|---|---|---|
+| **Web** | `agent-mes web` | http://localhost:8000 (or http://100.85.105.99:8000 from MBP via Tailscale) | Live demo, judges click [APPROVE] buttons in browser |
+| **Terminal** | `agent-mes demo` | Terminal | Disaster-recovery fallback if web breaks |
+| **Replay** | `make web` then visit `/replay` | http://localhost:8000/replay | asciinema playback of a known-good run |
+
+### Web UI
 
 ```bash
-agent-mes demo                          # full pipeline, dry-run friendly
+agent-mes web                           # boots FastAPI on 0.0.0.0:8000
+make web                                # same, via Makefile
+make web-smoke                          # boot, hit endpoints, kill, exit
+```
+
+Then open **http://100.85.105.99:8000** in your MBP browser.
+
+**On first launch from MBP**, macOS may prompt the Mini for "Allow incoming connections to Python?" — click **Allow** once. After that the port is open.
+
+**Demo flow in the browser:**
+1. Page loads showing both tickets in the **PLAN** column with their inbound Slack text visible
+2. Click **▶ Launch Pipeline** — both tickets fire in parallel
+3. Cards animate through the 7 columns; receipts accumulate inside each card
+4. When TKT-001 hits the **REVIEW** drift catch and TKT-002 hits its déjà-vu catch, **inline `[APPROVE TKT-001]` and `[APPROVE TKT-002]` buttons appear on the cards** — click them
+5. Both cards land in **DEPLOY**, header flips to "complete — both tickets merged ✓"
+6. Click **↻ Run Again** to rehearse the demo back-to-back
+
+### Terminal UI (fallback)
+
+```bash
+agent-mes demo                          # full pipeline, waits for [enter] then [y][y]
 agent-mes demo --dry-run                # don't open real GitHub PRs
-agent-mes demo --speed 1000             # fast Codex replay (for tests)
 make demo                               # via Makefile
 make smoke                              # run the end-to-end gate test
 ```
 
-**Terminal sizing:** AgentMES needs at least **180×50** for the kanban cards to render readably. Resize your terminal (or zoom out) before running the demo. The dashboard prints a warning if it detects a smaller window.
+**Terminal sizing:** AgentMES needs at least **180×50** for the kanban cards to render readably. The dashboard prints a warning if it detects a smaller window.
 
 When the live integrations land (`vish/redis-blaxel` branch), wire 1Password secrets:
 
