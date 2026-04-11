@@ -1,7 +1,7 @@
 # Yolo: AgentMES
 **Spec:** docs/specs/agentmes.md
 
-- [ ] Task 1: Project scaffolding — SIMPLE
+- [x] Task 1: Project scaffolding — SIMPLE
 - [ ] Task 2: agent_mes/schema.py — Pydantic models — MODERATE
 - [ ] Task 3: agent_mes/interfaces.py — Protocol classes — SIMPLE
 - [ ] Task 4: agent_mes/integrations/stubs/redis_memory.py — MODERATE
