@@ -74,6 +74,31 @@ def version() -> None:
 
 
 @app.command()
+def web(
+    host: str = typer.Option("0.0.0.0", "--host", help="Bind address (0.0.0.0 for Tailnet)"),
+    port: int = typer.Option(8000, "--port", help="Port to bind"),
+) -> None:
+    """Boot the AgentMES live web kanban — alternative to the terminal demo.
+
+    URLs:
+      http://localhost:8000          (local browser on the Mini)
+      http://100.85.105.99:8000      (MBP via Tailscale)
+    """
+    import uvicorn
+
+    typer.echo("\n  AgentMES live kanban\n")
+    typer.echo(f"  → http://localhost:{port}")
+    typer.echo(f"  → http://100.85.105.99:{port}   (Tailscale)")
+    typer.echo("\n  Press Ctrl+C to stop.\n")
+    uvicorn.run(
+        "agent_mes.web.server:app",
+        host=host,
+        port=port,
+        log_level="info",
+    )
+
+
+@app.command()
 def demo(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Don't actually open GitHub PRs (rehearsal mode)"
