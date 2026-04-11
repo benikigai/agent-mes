@@ -10,4 +10,4 @@
 - [x] Task 7: web/index.html + web/style.css + web/app.js — frontend — MODERATE
 - [x] Task 8: web/replay.html — move existing asciinema page — SIMPLE
 - [x] Task 9: tests/test_web.py + test_events.py + test_gates.py — backend smoke — MODERATE
-- [ ] Task 10: README + Makefile + final smoke — SIMPLE
+- [x] Task 10: README + Makefile + final smoke — SIMPLE

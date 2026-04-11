@@ -27,12 +27,17 @@ record:
 
 web:
 	@cp recordings/full-demo.cast web/full-demo.cast 2>/dev/null || true
-	@echo ""
-	@echo "  AgentMES is live at: http://localhost:8080"
-	@echo ""
-	@echo "  Press Ctrl+C to stop the server."
-	@echo ""
-	@cd web && $(PY) -m http.server 8080
+	$(PY) -m agent_mes web
+
+web-smoke:
+	@$(PY) -m agent_mes web --port 8765 & \
+		PID=$$!; \
+		sleep 1.5; \
+		curl -sf http://localhost:8765/api/state > /dev/null && echo "✓ /api/state OK" || (echo "✗ /api/state FAILED"; kill $$PID; exit 1); \
+		curl -sf http://localhost:8765/ > /dev/null && echo "✓ / OK" || (echo "✗ / FAILED"; kill $$PID; exit 1); \
+		curl -sf http://localhost:8765/replay > /dev/null && echo "✓ /replay OK" || (echo "✗ /replay FAILED"; kill $$PID; exit 1); \
+		kill $$PID; \
+		echo "✓ web-smoke passed"
 
 clean:
 	rm -rf .demo/*.jsonl .demo/outputs/*.md __pycache__ */__pycache__ */*/__pycache__
