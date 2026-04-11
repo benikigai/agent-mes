@@ -2,9 +2,10 @@
 
 Runs the full pipeline on both tickets via stubs, asserts the choreographed
 beats hit identically every rehearsal:
-- TKT-001 emits ≥10 StageEvents incl iter 2 with violation.destination='evil.example.com'
-  and a Review event with status='DRIFT'
-- TKT-002 emits ≥7 StageEvents
+
+- TKT-001 (CODE flaky test fix) emits a Blaxel egress kill on iter 2
+  AND a Stage 5 drift catch referencing inc_226
+- TKT-002 (SIMPLE postmortem) emits a Stage 5 drift catch referencing inc_201
 - Both end with status='merged'
 - Uses AGENTMES_AUTO_APPROVE=1 + dry_run=True
 - Completes in <30s
@@ -71,43 +72,42 @@ async def test_smoke_full_pipeline_both_tickets():
     results = await pipeline.run_parallel(tasks)
     duration = time.perf_counter() - start
 
-    # Both tickets reached DEPLOY
     assert all(r.status == "merged" for r in results)
     assert duration < 30.0, f"smoke run took {duration:.1f}s, must be <30s"
 
     tkt_001 = next(r for r in results if r.id == "TKT-001")
     tkt_002 = next(r for r in results if r.id == "TKT-002")
 
-    # ── TKT-001 (CODE) ───────────────────────────────────────────────
+    # ── TKT-001 (CODE — flaky test fix) ─────────────────────────────
     assert tkt_001.type == TicketType.CODE
-    assert len(tkt_001.events) >= 10, f"TKT-001 only had {len(tkt_001.events)} events"
+    assert len(tkt_001.events) >= 10
 
     # The Blaxel egress kill on iter 2
-    egress_events = [
-        e
-        for e in tkt_001.events
+    egress = [
+        e for e in tkt_001.events
         if e.metadata.get("violation", {}).get("destination") == "evil.example.com"
     ]
-    assert len(egress_events) == 1, "missing the BLAST_RADIUS_VIOLATION event"
-    assert egress_events[0].metadata["violation"]["killed_in_ms"] == 23
+    assert len(egress) == 1
+    assert egress[0].metadata["violation"]["killed_in_ms"] == 23
 
-    # The Stage 5 memory drift catch
-    drift_events = [e for e in tkt_001.events if e.metadata.get("status") == "DRIFT"]
-    assert len(drift_events) >= 1, "missing the memory drift catch event"
+    # The Stage 5 drift catch on the "we mocked this" memory
+    drift_001 = [e for e in tkt_001.events if e.metadata.get("status") == "DRIFT"]
+    assert len(drift_001) >= 1
+    assert any(e.metadata.get("prior_incident") == "inc_226" for e in drift_001)
 
-    # The HUMAN approval gate fired
-    human_events = [e for e in tkt_001.events if e.agent == "HUMAN"]
-    assert len(human_events) >= 1
-    assert any(e.action == "approved" for e in human_events)
+    # The HUMAN approval gate
+    assert any(e.agent == "HUMAN" and e.action == "approved" for e in tkt_001.events)
 
-    # ── TKT-002 (SIMPLE) ─────────────────────────────────────────────
+    # ── TKT-002 (SIMPLE — postmortem) ───────────────────────────────
     assert tkt_002.type == TicketType.SIMPLE
-    assert len(tkt_002.events) >= 7, f"TKT-002 only had {len(tkt_002.events)} events"
+    assert len(tkt_002.events) >= 7
 
-    # No drift catch on the email path
-    assert not any(e.metadata.get("status") == "DRIFT" for e in tkt_002.events)
+    # The Stage 5 drift catch on the "same root cause" memory
+    drift_002 = [e for e in tkt_002.events if e.metadata.get("status") == "DRIFT"]
+    assert len(drift_002) >= 1
+    assert any(e.metadata.get("prior_incident") == "inc_201" for e in drift_002)
 
-    # Both tickets touched all 7 stages at least once
+    # Both touched all 7 stages
     for task in (tkt_001, tkt_002):
         stages_seen = {e.stage for e in task.events}
-        assert len(stages_seen) == 7, f"{task.id} missing stages: {set(range(7)) - stages_seen}"
+        assert len(stages_seen) == 7, f"{task.id} missing stages"

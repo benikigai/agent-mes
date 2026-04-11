@@ -18,7 +18,8 @@ from agent_mes.schema import (
 )
 from agent_mes.stages.base import BaseStage
 
-CODE_KEYWORDS = {"fix", "implement", "refactor", "bug", "patch", "deploy", "rate limit", "oauth"}
+SIMPLE_KEYWORDS = {"draft", "postmortem", "email", "summary", "report", "write up", "write a", "send", "notify"}
+CODE_KEYWORDS = {"fix", "implement", "refactor", "bug", "patch", "rate limit", "oauth", "race condition", "test_", "flaky"}
 
 
 class PlanStage(BaseStage):
@@ -45,9 +46,12 @@ class PlanStage(BaseStage):
         if "blast_radius" in plan_payload:
             task.blast_radius = BlastRadius(**plan_payload["blast_radius"])
 
-        # Classify ticket type via keyword heuristic on the raw input
+        # Classify ticket type via keyword heuristic — SIMPLE keywords win
+        # because postmortems often mention "deploy" or "fix" in their bodies.
         text_lower = task.raw_input.lower()
-        if any(k in text_lower for k in CODE_KEYWORDS):
+        if any(k in text_lower for k in SIMPLE_KEYWORDS):
+            task.type = TicketType.SIMPLE
+        elif any(k in text_lower for k in CODE_KEYWORDS):
             task.type = TicketType.CODE
         else:
             task.type = TicketType.SIMPLE

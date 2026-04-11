@@ -28,7 +28,7 @@ async def test_plan_classifies_tkt_001_as_code():
     assert len(events) == 1
     assert task.type == TicketType.CODE
     assert len(task.acceptance_criteria) == 3
-    assert task.intent.startswith("raise the OAuth")
+    assert task.intent.startswith("fix the flaky test")
     assert events[0].metadata["status"] == "PASS"
 
 
@@ -39,6 +39,6 @@ async def test_plan_classifies_tkt_002_as_simple():
     events = await stage.execute(task)
     assert len(events) == 1
     assert task.type == TicketType.SIMPLE
-    assert task.intent.startswith("draft a status-update")
+    assert task.intent.startswith("draft postmortem")
     assert task.current_stage == StageEnum.PLAN
     assert task.human_gates[0].approved is True

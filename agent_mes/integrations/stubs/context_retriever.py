@@ -1,9 +1,15 @@
 """Choreographed stub of ContextRetrieverProtocol.
 
 Returns Heliograph fixtures so Stage 2 hydration and Stage 5 verification
-look real. The Stage 5 contradiction returns a structured discrepancy:
-the seed memory's endpoint (/v1/login) vs the current ticket's endpoint
-(/v2/oauth) — the demo's structural drift catch.
+look real. The Stage 5 contradictions return structured discrepancies for
+the two demo scenarios:
+
+  CODE-A: claim "we should mock the flaky test" → fact: inc_226 shows
+          mocking this test caused a prod incident two weeks later
+
+  SIMPLE-A: claim "incident-2026-04-09 is a new failure mode" → fact:
+            inc_201 has the same root cause and an action item that was
+            never implemented
 """
 
 from __future__ import annotations
@@ -25,32 +31,41 @@ class StubContextRetriever:
         return filter_entities(entity_type, filter_dict)
 
     async def verify_claim(self, claim: str, entity_type: str) -> dict[str, Any]:
-        """Cross-check a memory claim against live entity records.
+        """Cross-check a memory claim against live entity records."""
+        c = claim.lower()
 
-        For the auth rate limiter case (the adversary memory), returns a
-        structural mismatch: the historical fix was on /v1/login but the
-        current ticket is about /v2/oauth.
-        """
-        claim_lower = claim.lower()
-        if "auth rate limit" in claim_lower or (
-            "rate limit" in claim_lower and "login" in claim_lower
-        ):
-            actual_incident = await self.query_entity("incident", "inc_113")
+        # CODE-A: any claim suggesting we mock the flaky test
+        if "mock" in c and ("test" in c or "flaky" in c):
+            inc = await self.query_entity("incident", "inc_226")
             return {
                 "verified": False,
                 "actual": {
-                    "incident_id": actual_incident["id"],
-                    "endpoint": actual_incident["endpoint"],
-                    "summary": actual_incident["summary"],
-                    "fix_pr_url": actual_incident["fix_pr_url"],
+                    "incident_id": inc["id"],
+                    "endpoint": inc["endpoint"],
+                    "summary": inc["summary"],
+                    "fix_pr_url": inc["fix_pr_url"],
                 },
                 "discrepancy": (
-                    f"endpoint mismatch: memory references "
-                    f"{actual_incident['endpoint']} but current task is /v2/oauth"
+                    "prior incident inc_226: mocking this test six months ago "
+                    "caused a 14-minute production outage two weeks later"
                 ),
             }
-        return {
-            "verified": True,
-            "actual": {},
-            "discrepancy": "",
-        }
+
+        # SIMPLE-A: claim that the new incident is novel
+        if "incident" in c and ("rate" in c or "limiter" in c or "deploy" in c or "root cause" in c):
+            inc = await self.query_entity("incident", "inc_201")
+            return {
+                "verified": False,
+                "actual": {
+                    "incident_id": inc["id"],
+                    "endpoint": inc["endpoint"],
+                    "summary": inc["summary"],
+                    "root_cause": inc.get("root_cause", ""),
+                },
+                "discrepancy": (
+                    "prior incident inc_201 (2026-02-14) had the same root cause; "
+                    "action item AI-24 proposed a deploy validation gate but was never implemented"
+                ),
+            }
+
+        return {"verified": True, "actual": {}, "discrepancy": ""}

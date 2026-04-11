@@ -13,7 +13,7 @@ async def test_build_code_emits_diff_metadata():
     task = MESTask(
         id="TKT-001",
         type=TicketType.CODE,
-        intent="raise the OAuth /v2 rate limit",
+        intent="fix flaky test test_oauth_token_refresh",
         raw_input="",
         requester="sarah",
         source="#bugs",
@@ -28,18 +28,21 @@ async def test_build_code_emits_diff_metadata():
 
 
 @pytest.mark.asyncio
-async def test_build_email_emits_word_count_and_stashes_body():
+async def test_build_postmortem_emits_action_items_and_stashes_body():
     stage = BuildStage(codex=CodexReplayBuilder(speed=1000.0))
     task = MESTask(
         id="TKT-002",
         type=TicketType.SIMPLE,
-        intent="draft a status email",
+        intent="draft postmortem",
         raw_input="",
         requester="marcus",
-        source="#announcements",
+        source="#incidents",
     )
     events = await stage.execute(task)
     assert len(events) == 1
-    assert events[0].metadata["word_count"] > 50
+    e = events[0]
+    assert e.metadata["action_items"] >= 3
+    assert e.metadata["five_whys"] >= 5
+    assert e.metadata["channel"] == "#incidents"
     assert "email_body" in task.context_bundle
-    assert events[0].artifacts[0].type == "email"
+    assert "Postmortem" in task.context_bundle["email_body"]

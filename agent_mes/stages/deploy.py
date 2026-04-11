@@ -104,14 +104,14 @@ class DeployStage(BaseStage):
 
     async def _deploy_email(self, task: MESTask) -> StageEvent:
         body = task.context_bundle.get("email_body", "(no body)")
-        out_path = OUTPUTS_DIR / f"email-{task.id}.md"
+        out_path = OUTPUTS_DIR / f"postmortem-{task.id}.md"
         out_path.write_text(body)
         return self._emit_event(
             task=task,
             agent="file",
-            action=f"saved email to {out_path}",
-            metadata={"would_send": "via SMTP", "status": "PASS"},
-            artifacts=[Artifact(type="email", ref=str(out_path), summary="drafted")],
+            action=f"saved postmortem to {out_path.name}",
+            metadata={"posted_to": "#incidents", "status": "PASS"},
+            artifacts=[Artifact(type="email", ref=str(out_path), summary="postmortem")],
         )
 
     def _render_pr_body(self, task: MESTask) -> str:
