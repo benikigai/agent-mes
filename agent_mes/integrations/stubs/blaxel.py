@@ -46,7 +46,7 @@ class StubBlaxelVerifier:
     async def run_check(self, sandbox: StubSandbox, machine_check: str) -> dict[str, Any]:
         """Execute a single acceptance criterion. The result is determined
         by the sandbox's current iteration counter so the demo is reliable."""
-        await asyncio.sleep(0.2)  # ~200ms feels like a real test run
+        await asyncio.sleep(0.55)  # each iter visibly cycles fail → kill → pass
 
         if sandbox.iteration == 1:
             return {

@@ -13,6 +13,9 @@ dependencies = [
     "pydantic>=2",
     "httpx>=0.28",
     "typer>=0.24",
+    "fastapi>=0.115",
+    "sse-starlette>=2.0",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]

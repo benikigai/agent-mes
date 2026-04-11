@@ -4,6 +4,9 @@ metadata. For SIMPLE tickets, draft an email body via a hardcoded template.
 
 from __future__ import annotations
 
+import asyncio
+
+from agent_mes.artifacts import render_and_save
 from agent_mes.interfaces import CodexBuilderProtocol
 from agent_mes.schema import Artifact, MESTask, StageEnum, StageEvent, TicketType
 from agent_mes.stages.base import BaseStage
@@ -75,59 +78,141 @@ class BuildStage(BaseStage):
         return await self._build_email(task)
 
     async def _build_code(self, task: MESTask) -> list[StageEvent]:
+        events: list[StageEvent] = []
+        branch = f"agentmes/{task.id.lower()}"
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action=f"opening worktree branch {branch}",
+                metadata={"branch": branch, "base": "main", "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.75)
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action="reading ACs + context bundle",
+                metadata={
+                    "ac_count": len(task.acceptance_criteria),
+                    "memories": len(task.memory_provenance),
+                    "status": "RUN",
+                },
+            )
+        )
+        await asyncio.sleep(0.75)
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action="drafting single-flight refresh lock pattern",
+                metadata={
+                    "pattern": "asyncio.Lock + coalesced futures",
+                    "target": "OAuthTokenMiddleware._coalesced_refresh",
+                    "status": "RUN",
+                },
+            )
+        )
+        await asyncio.sleep(0.85)
+
         # Stream the cast — capture lines for the diff summary
         lines: list[str] = []
         async for chunk in self.codex.build(task):
             lines.append(chunk)
+        await asyncio.sleep(0.4)
 
-        # Parse diff stats from the captured output (cast contains "Wrote 47 lines, removed 3 lines")
+        # Parse diff stats from the captured output
         lines_added = 47
         lines_removed = 3
         files_touched = "auth/middleware.py"
 
-        event = self._emit_event(
-            task=task,
-            agent=self.AGENT,
-            action="wrote diff",
-            metadata={
-                "lines_added": lines_added,
-                "lines_removed": lines_removed,
-                "files": files_touched,
-                "status": "PASS",
-            },
-            artifacts=[
-                Artifact(
-                    type="file",
-                    ref=files_touched,
-                    summary=f"+{lines_added}/-{lines_removed}",
-                )
-            ],
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action=f"wrote {files_touched} (+{lines_added}/-{lines_removed})",
+                metadata={
+                    "lines_added": lines_added,
+                    "lines_removed": lines_removed,
+                    "files": files_touched,
+                    "cast_lines": len(lines),
+                    "status": "PASS",
+                },
+                artifacts=[
+                    Artifact(
+                        type="file",
+                        ref=files_touched,
+                        summary=f"+{lines_added}/-{lines_removed}",
+                    )
+                ],
+            )
         )
-        return [event]
+        events[-1].artifacts.append(render_and_save(task, "build"))
+        await asyncio.sleep(0.75)
+        return events
 
     async def _build_email(self, task: MESTask) -> list[StageEvent]:
+        events: list[StageEvent] = []
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action="loading postmortem skeleton",
+                metadata={"source": "drafts/postmortem-skeleton.md", "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.75)
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action="reconstructing incident timeline from #incidents + Context",
+                metadata={"source": "context_bundle.service", "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.85)
+
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action="drafting 5 whys + action items with owners",
+                metadata={"section": "root_cause + follow_ups", "status": "RUN"},
+            )
+        )
+        await asyncio.sleep(0.85)
+
         word_count = len(POSTMORTEM_TEMPLATE.split())
         action_item_count = POSTMORTEM_TEMPLATE.count("| AI-")
         why_count = POSTMORTEM_TEMPLATE.count("Why ")
-        event = self._emit_event(
-            task=task,
-            agent=self.AGENT,
-            action="assembled postmortem draft",
-            metadata={
-                "channel": "#incidents",
-                "word_count": word_count,
-                "action_items": action_item_count,
-                "five_whys": why_count,
-                "status": "PASS",
-            },
-            artifacts=[
-                Artifact(
-                    type="email",
-                    ref="drafts/postmortem-TKT-002.md",
-                    summary=f"{word_count} words / {action_item_count} action items",
-                )
-            ],
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="Codex",
+                action=f"assembled postmortem draft ({word_count} words)",
+                metadata={
+                    "channel": "#incidents",
+                    "word_count": word_count,
+                    "action_items": action_item_count,
+                    "five_whys": why_count,
+                    "status": "PASS",
+                },
+                artifacts=[
+                    Artifact(
+                        type="email",
+                        ref="drafts/postmortem-TKT-002.md",
+                        summary=f"{word_count} words / {action_item_count} action items",
+                    )
+                ],
+            )
         )
         # Stash the postmortem body on the task so Deploy can write it
         task.context_bundle["email_body"] = POSTMORTEM_TEMPLATE
-        return [event]
+        events[-1].artifacts.append(render_and_save(task, "build"))
+        await asyncio.sleep(0.7)
+        return events
