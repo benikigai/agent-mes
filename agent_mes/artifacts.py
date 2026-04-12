@@ -107,6 +107,43 @@ def _sponsor_header(
     return lines
 
 
+def _plushpalace_source_for_memory(memory_source: str) -> str | None:
+    """Best-effort map from a stub memory's ``source`` string back to the
+    plushpalace-world YAML file + anchor that would originate it.
+
+    The stub fixtures use opaque source labels like ``agent_memory_seed``,
+    ``incident_205_log``, ``lesson_404``. This helper returns a plausible
+    YAML path so the artifact can link to the real origin in
+    plushpalace-world on GitHub. Once the real plushpalace backend lands
+    (Batch C), the stub will hand us real paths and this fallback goes away.
+    """
+    if not memory_source:
+        return None
+    lower = memory_source.lower()
+    if "incident" in lower:
+        return "data/incidents.yaml"
+    if "postmortem" in lower:
+        return "data/postmortems.yaml"
+    if "lesson" in lower:
+        return "data/lessons.yaml"
+    if "code" in lower or "pr" in lower:
+        return "data/code.yaml"
+    if "email" in lower:
+        return "data/emails.yaml"
+    if "person" in lower or "employee" in lower:
+        return "data/people.yaml"
+    if "vendor" in lower or "factory" in lower:
+        return "data/vendors.yaml"
+    if "repo" in lower or "repository" in lower:
+        return "data/repos.yaml"
+    if "product" in lower or "sku" in lower:
+        return "data/products.yaml"
+    if "customer" in lower:
+        return "data/customers.yaml"
+    # Generic fallback
+    return "data/"
+
+
 def _stage_outputs_table(rows: list[tuple[str, str, str]]) -> list[str]:
     """Render a markdown table of concrete stage outputs.
 
@@ -389,6 +426,13 @@ def render_design(task: MESTask) -> str:
             lines.append(f"- **confidence:** `{m.confidence:.2f}`")
             lines.append(f"- **source:** `{m.source}`")
             lines.append(f"- **retrieved_at:** `{m.retrieved_at.isoformat()}`")
+            # Best-effort plushpalace source path inference from the memory source
+            pp_path = _plushpalace_source_for_memory(m.source)
+            if pp_path:
+                lines.append(
+                    f"- **plushpalace source:** "
+                    f"[`plushpalace-world/{pp_path}`](https://github.com/benikigai/plushpalace-world/blob/main/{pp_path})"
+                )
             lines.append("")
             lines.append("> " + m.text.replace("\n", "\n> "))
             lines.append("")
@@ -396,6 +440,14 @@ def render_design(task: MESTask) -> str:
         lines.append("_(no memories hydrated)_")
 
     lines += [
+        "",
+        "### Context source: plushpalace-world",
+        "",
+        "Both Redis Agent Memory and Redis Context Surfaces pull from the "
+        "[plushpalace-world](https://github.com/benikigai/plushpalace-world) "
+        "synthetic context graph — 10 typed entity YAML files that represent the "
+        "fictional PlushPalace Co. The \"drift catch\" in Stage 5 Review is powered "
+        "by pre-seeded contradictions inside those YAML files.",
         "",
         "### Context Surfaces entity query",
         "",
@@ -889,11 +941,26 @@ def render_review(task: MESTask) -> str:
         "",
     ]
     if task.memory_provenance:
-        lines.append("| # | Confidence | Source | Text |")
-        lines.append("| - | --- | --- | --- |")
+        lines.append("| # | Confidence | Source | plushpalace origin | Text |")
+        lines.append("| - | --- | --- | --- | --- |")
         for i, m in enumerate(task.memory_provenance, 1):
-            txt = m.text.replace("|", r"\|").replace("\n", " ")[:80]
-            lines.append(f"| {i} | `{m.confidence:.2f}` | `{m.source}` | {txt}... |")
+            txt = m.text.replace("|", r"\|").replace("\n", " ")[:70]
+            pp_path = _plushpalace_source_for_memory(m.source)
+            pp_link = (
+                f"[{pp_path}](https://github.com/benikigai/plushpalace-world/blob/main/{pp_path})"
+                if pp_path
+                else "_unknown_"
+            )
+            lines.append(
+                f"| {i} | `{m.confidence:.2f}` | `{m.source}` | {pp_link} | {txt}... |"
+            )
+        lines.append("")
+        lines.append(
+            "All ground-truth cross-checks run against the **plushpalace-world** "
+            "synthetic context graph. Each memory links back to the YAML file that "
+            "originated it; the drift catches fire whenever a hydrated lesson "
+            "contradicts a verified incident or postmortem record."
+        )
         lines.append("")
     else:
         lines.append("_(no memories to verify)_")
