@@ -201,6 +201,20 @@ async def get_state() -> dict[str, Any]:
     }
 
 
+@app.get("/api/mode")
+async def get_mode() -> dict[str, Any]:
+    """Return which integration modes the server is currently running
+    in. The browser reads this on boot to decorate the topbar chip."""
+    return {
+        "real_pr": os.environ.get("AGENTMES_OPEN_REAL_PR") == "1",
+        "blaxel_live": _HAS_BLAXEL_LIVE
+        and os.environ.get("AGENTMES_BLAXEL_STUB") != "1",
+        "plushpalace_context": _HAS_PLUSHPALACE
+        and os.environ.get("AGENTMES_USE_PLUSHPALACE") != "0",
+        "github_repo": "benikigai/agent-mes",
+    }
+
+
 async def _broadcast_state() -> None:
     """Push the current task list to every SSE subscriber."""
     payload = _state_payload(state.tasks)
@@ -385,6 +399,219 @@ li { margin:4px 0; }
 .breadcrumb a:hover { color:#4dd0e1; }
 .missing { color:#fbbf24; font-family:"JetBrains Mono",Menlo,monospace; font-size:13px; }
 """
+
+
+_REDIS_DASHBOARD_CSS = """
+body { background:#0b0d12; color:#e6e6e6; font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;
+       margin:0; padding:0; line-height:1.5; }
+.topbar { padding:16px 28px; border-bottom:1px solid #2a3040; background:#11141c;
+          display:flex; align-items:baseline; gap:16px; }
+.topbar h1 { margin:0; color:#f87171; font-size:22px; font-weight:700; }
+.topbar .sub { color:#9aa3b2; font-size:13px; font-family:"JetBrains Mono",Menlo,monospace; }
+.topbar .src { margin-left:auto; color:#4dd0e1; text-decoration:none; font-size:12px;
+               font-family:"JetBrains Mono",Menlo,monospace; }
+.topbar .src:hover { text-decoration:underline; }
+.layout { display:grid; grid-template-columns: 280px 1fr; min-height:calc(100vh - 80px); }
+.sidebar { background:#0e1118; border-right:1px solid #2a3040; padding:14px 0; overflow-y:auto; }
+.sidebar-section { padding:8px 18px; font-family:"JetBrains Mono",Menlo,monospace; font-size:10px;
+                   font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#6f7689;
+                   border-top:1px solid #1f2330; margin-top:6px; }
+.sidebar-section:first-of-type { border-top:none; margin-top:0; }
+.key-entry { display:block; padding:6px 18px; color:#e6e6e6; text-decoration:none; font-size:12px;
+             font-family:"JetBrains Mono",Menlo,monospace; border-left:2px solid transparent; }
+.key-entry:hover { background:#161922; border-left-color:#4dd0e1; }
+.key-entry.active { background:#161922; border-left-color:#f87171; color:#f87171; }
+.key-title { color:#9aa3b2; font-size:10.5px; margin-top:2px; display:block; font-family:sans-serif;
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.viewer { padding:24px 32px; overflow-y:auto; }
+.viewer h2 { color:#f87171; margin:0 0 6px; font-size:18px; }
+.viewer .key-meta { color:#9aa3b2; font-family:"JetBrains Mono",Menlo,monospace; font-size:12px;
+                    margin-bottom:20px; padding-bottom:16px; border-bottom:1px dashed #2a3040; }
+.viewer .key-meta code { color:#fbbf24; background:#161922; padding:2px 6px; border-radius:3px; }
+.viewer pre { background:#11141c; border:1px solid #2a3040; border-radius:6px; padding:16px;
+              overflow-x:auto; font-family:"JetBrains Mono",Menlo,monospace; font-size:12.5px;
+              line-height:1.55; color:#e6e6e6; }
+.empty { color:#6f7689; padding:40px; text-align:center; font-style:italic; }
+.breadcrumb { color:#6f7689; font-family:"JetBrains Mono",Menlo,monospace; font-size:12px; }
+.breadcrumb a { color:#9aa3b2; text-decoration:none; }
+.breadcrumb a:hover { color:#4dd0e1; }
+.stats-row { display:flex; gap:10px; flex-wrap:wrap; padding:10px 18px; }
+.stat { background:#161922; border:1px solid #2a3040; border-radius:4px; padding:6px 10px;
+        font-family:"JetBrains Mono",Menlo,monospace; font-size:10px; color:#9aa3b2; }
+.stat strong { color:#f87171; font-size:13px; display:block; }
+"""
+
+
+def _load_plushpalace_for_dashboard() -> dict[str, list[dict[str, Any]]]:
+    """Best-effort load of the plushpalace YAML data into a dict keyed by
+    entity type. Returns an empty dict if the plushpalace package or
+    data dir isn't available."""
+    try:
+        from pathlib import Path as _Path
+
+        from plushpalace.loader import load_all as _load_all
+
+        data_dir = _Path.home() / "code" / "plushpalace-world" / "data"
+        if not data_dir.exists():
+            return {}
+        raw = _load_all(data_dir)
+        out: dict[str, list[dict[str, Any]]] = {}
+        for kind, entities in raw.items():
+            out[kind] = []
+            for e in entities:
+                if hasattr(e, "model_dump"):
+                    out[kind].append(e.model_dump(mode="json"))
+                else:
+                    out[kind].append(dict(e.__dict__))
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+_PLUSHPALACE_YAML_FILES = {
+    "person": "data/people.yaml",
+    "vendor": "data/vendors.yaml",
+    "product": "data/products.yaml",
+    "repository": "data/repos.yaml",
+    "incident": "data/incidents.yaml",
+    "postmortem": "data/postmortems.yaml",
+    "code_change": "data/code.yaml",
+    "customer": "data/customers.yaml",
+    "email": "data/emails.yaml",
+    "lesson": "data/lessons.yaml",
+}
+
+
+@app.get("/redis")
+async def redis_dashboard(key: str | None = None) -> HTMLResponse:
+    """Render the plushpalace-backed Redis data as a dark-themed key
+    browser. Mimics Redis Insight's tree view: left sidebar lists all
+    keys grouped by entity type, main panel shows the selected key's
+    JSON value. Hyperlinked so each entity type section can be deep-
+    linked as ``/redis?key=incident:inc-2026-04-09``.
+    """
+    data = _load_plushpalace_for_dashboard()
+    total_keys = sum(len(v) for v in data.values())
+
+    # Build a flat list of (kind, id, doc) in deterministic order
+    all_entries: list[tuple[str, str, dict[str, Any]]] = []
+    for kind in sorted(data.keys()):
+        for doc in data[kind]:
+            eid = str(doc.get("id", "?"))
+            all_entries.append((kind, eid, doc))
+
+    # Resolve selected key
+    selected = None
+    for kind, eid, doc in all_entries:
+        key_str = f"{kind}:{eid}"
+        if key_str == key:
+            selected = (kind, eid, doc)
+            break
+    if selected is None and all_entries:
+        selected = all_entries[0]
+
+    # Sidebar HTML
+    sidebar_html: list[str] = []
+    last_kind = None
+    for kind, eid, doc in all_entries:
+        if kind != last_kind:
+            sidebar_html.append(
+                f'<div class="sidebar-section">{html.escape(kind)} '
+                f'({len(data.get(kind, []))})</div>'
+            )
+            last_kind = kind
+        key_str = f"{kind}:{eid}"
+        active = "active" if selected and selected[1] == eid and selected[0] == kind else ""
+        title = str(doc.get("title") or doc.get("name") or "")[:60]
+        sidebar_html.append(
+            f'<a class="key-entry {active}" href="/redis?key={html.escape(key_str)}">'
+            f'{html.escape(key_str)}'
+            f'{("<span class=\"key-title\">" + html.escape(title) + "</span>") if title else ""}'
+            "</a>"
+        )
+
+    # Viewer HTML
+    if selected:
+        skind, sid, sdoc = selected
+        yaml_file = _PLUSHPALACE_YAML_FILES.get(skind, f"data/{skind}.yaml")
+        gh_url = f"https://github.com/benikigai/plushpalace-world/blob/main/{yaml_file}"
+        viewer_html = f'''
+            <div class="breadcrumb"><a href="/">← board</a> · Redis · {html.escape(skind)} · {html.escape(sid)}</div>
+            <h2>{html.escape(str(sdoc.get("title") or sdoc.get("name") or sid))}</h2>
+            <div class="key-meta">
+              <code>{html.escape(f"{skind}:{sid}")}</code> ·
+              source: <a href="{gh_url}" target="_blank" style="color:#4dd0e1">↗ {html.escape(yaml_file)}</a>
+            </div>
+            <pre><code>{html.escape(json.dumps(sdoc, indent=2, default=str))}</code></pre>
+        '''
+    else:
+        viewer_html = (
+            '<div class="empty">no plushpalace data loaded — is ~/code/plushpalace-world/data present?</div>'
+        )
+
+    stats_row = f"""
+        <div class="stats-row">
+          <div class="stat">TOTAL KEYS<strong>{total_keys}</strong></div>
+          <div class="stat">ENTITY TYPES<strong>{len(data)}</strong></div>
+          <div class="stat">BACKEND<strong>PLUSHPALACE</strong></div>
+        </div>
+    """
+
+    page = f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Redis — AgentMES</title>
+<style>{_REDIS_DASHBOARD_CSS}</style>
+</head><body>
+<div class="topbar">
+  <h1>Redis</h1>
+  <span class="sub">agent memory + context surfaces</span>
+  <a class="src" href="https://github.com/benikigai/plushpalace-world" target="_blank">↗ source: plushpalace-world</a>
+</div>
+<div class="layout">
+  <div class="sidebar">
+    {stats_row}
+    {''.join(sidebar_html)}
+  </div>
+  <div class="viewer">
+    {viewer_html}
+  </div>
+</div>
+</body></html>"""
+    return HTMLResponse(page)
+
+
+@app.get("/output/{task_id}")
+async def view_output(task_id: str) -> HTMLResponse:
+    """Render the drafted email output for SIMPLE tickets (e.g.
+    ``.demo/outputs/postmortem-TKT-002.md``) as a dark-themed page so
+    operators can click the artifact link and review the actual
+    delivered file in the browser."""
+    output_path = Path(".demo/outputs") / f"postmortem-{task_id}.md"
+    if not output_path.exists():
+        content = f'<p class="missing">no output file yet for {html.escape(task_id)} — run the pipeline first</p>'
+        raw_literal = "null"
+    else:
+        content = '<div id="content">rendering…</div>'
+        raw_literal = json.dumps(output_path.read_text(encoding="utf-8"))
+
+    page = f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>{html.escape(task_id)} output — AgentMES</title>
+<style>{_ARTIFACT_VIEWER_CSS}</style>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+</head><body>
+<div class="breadcrumb"><a href="/">← board</a> · {html.escape(task_id)} · delivered output (<code>.demo/outputs/postmortem-{html.escape(task_id)}.md</code>)</div>
+{content}
+<script>
+  const RAW = {raw_literal};
+  if (RAW !== null) {{
+    document.getElementById("content").innerHTML = marked.parse(RAW);
+  }}
+</script>
+</body></html>"""
+    return HTMLResponse(page)
 
 
 @app.get("/artifact/{task_id}/{stage}")

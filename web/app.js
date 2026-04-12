@@ -461,6 +461,30 @@ function connectSSE() {
 // ─── boot ───────────────────────────────────────────────────────────────────
 
 document.getElementById("reset-btn").addEventListener("click", resetBoard);
+
+// Flip the topbar mode chip based on which integrations are active
+async function loadMode() {
+  try {
+    const r = await fetch("/api/mode");
+    if (!r.ok) return;
+    const m = await r.json();
+    const chip = document.getElementById("mode-chip");
+    if (!chip) return;
+    if (m.real_pr) {
+      chip.dataset.mode = "live";
+      chip.textContent = "● LIVE PR";
+      chip.title = `Real PRs opened against ${m.github_repo || 'the repo'}`;
+    } else {
+      chip.dataset.mode = "stub";
+      chip.textContent = "dry-run";
+      chip.title = "Dry-run mode — set AGENTMES_OPEN_REAL_PR=1 to open real PRs";
+    }
+  } catch (e) {
+    console.error("mode check failed", e);
+  }
+}
+
 loadInitialState().then(() => {
   connectSSE();
+  loadMode();
 });

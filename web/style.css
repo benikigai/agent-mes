@@ -112,6 +112,50 @@ body {
   cursor: not-allowed;
 }
 
+.mode-chip {
+  font-family: "JetBrains Mono", Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  border-radius: 4px;
+  border: 1px solid;
+  white-space: nowrap;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.mode-chip[data-mode="stub"] {
+  color: var(--text-faint);
+  border-color: var(--border-strong);
+  background: var(--bg-card);
+}
+
+.mode-chip[data-mode="live"] {
+  color: #0b0d12;
+  border-color: var(--pass);
+  background: var(--pass);
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.35);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,100% { box-shadow: 0 0 12px rgba(74, 222, 128, 0.35); }
+  50%     { box-shadow: 0 0 18px rgba(74, 222, 128, 0.7);  }
+}
+
+.mode-chip.mode-redis {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.mode-chip.mode-redis:hover {
+  background: rgba(248, 113, 113, 0.2);
+  color: #ffb5b5;
+}
+
 .replay-link {
   color: var(--text-faint);
   text-decoration: none;
