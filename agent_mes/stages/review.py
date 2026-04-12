@@ -11,7 +11,7 @@ from typing import Awaitable, Callable
 
 from agent_mes.artifacts import render_and_save
 from agent_mes.interfaces import ContextRetrieverProtocol, RedisMemoryProtocol
-from agent_mes.schema import HumanGate, MESTask, StageEnum, StageEvent, TicketType
+from agent_mes.schema import Artifact, HumanGate, MESTask, StageEnum, StageEvent, TicketType
 from agent_mes.stages.base import BaseStage
 
 # Type alias for the optional browser-driven gate hook.
@@ -68,17 +68,33 @@ class ReviewStage(BaseStage):
             if not verification["verified"]:
                 drift_caught = True
                 memory.confidence = round(max(0.3, memory.confidence - 0.6), 2)
+                # Pull the plushpalace source link from the verify_claim
+                # `actual` payload so the drift event carries a clickable
+                # link back to the real YAML record it contradicted.
+                actual = verification.get("actual", {}) or {}
+                drift_artifacts = []
+                pp_gh = actual.get("plushpalace_github")
+                pp_yaml = actual.get("plushpalace_yaml")
+                if pp_gh:
+                    drift_artifacts.append(
+                        Artifact(
+                            type="file",
+                            ref=pp_gh,
+                            summary=f"↗ ground truth: {pp_yaml or 'data/'} · {actual.get('incident_id', '?')}",
+                        )
+                    )
                 events.append(
                     await self._emit_event(
                         task=task,
                         agent="Opus 4.6",
                         action=f"memory drift: {verification['discrepancy'][:50]}",
                         metadata={
-                            "prior_incident": verification["actual"].get("incident_id", "unknown"),
+                            "prior_incident": actual.get("incident_id", "unknown"),
                             "discrepancy": verification["discrepancy"][:80],
                             "confidence_after": memory.confidence,
                             "status": "DRIFT",
                         },
+                        artifacts=drift_artifacts,
                     )
                 )
                 await asyncio.sleep(0.55)
