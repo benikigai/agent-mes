@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import difflib
 import os
 import shutil
 import subprocess
@@ -27,6 +28,10 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from agent_mes.artifacts import render_and_save
+from agent_mes.integrations.demo_patches import (
+    FIXED_OAUTH_MIDDLEWARE,
+    TEMPLATE_MIDDLEWARE_PATH,
+)
 from agent_mes.interfaces import RedisMemoryProtocol
 from agent_mes.schema import Artifact, HumanGate, MESTask, StageEnum, StageEvent, TicketType
 from agent_mes.stages.base import BaseStage
@@ -252,7 +257,7 @@ class DeployStage(BaseStage):
         run_id = f"{task.id}-{timestamp}".lower()
         branch = f"agentmes-run/{run_id}"
         worktree_path = Path(tempfile.gettempdir()) / f"agentmes-pr-{run_id}"
-        file_rel_path = f"demo-runs/{run_id}.md"
+        run_dir_rel = f"demo-runs/runs/{run_id}"
         title = f"[AgentMES Kanban] {task.intent[:70]}"
 
         # Build a top-of-body callout that makes it obvious on GitHub this
@@ -279,6 +284,12 @@ class DeployStage(BaseStage):
             "> - **Drift catch:** Stage 5 Review cross-checked 3 "
             "[plushpalace-world](https://github.com/benikigai/plushpalace-world) "
             "memories against Context Surfaces ground truth",
+            f"> - **Files committed in this PR:**",
+            f"> - `{run_dir_rel}/auth/middleware.py` — the actual code fix "
+            "(single-flight refresh lock)",
+            f"> - `{run_dir_rel}/fix.diff` — unified diff against the "
+            f"buggy template at `{TEMPLATE_MIDDLEWARE_PATH}`",
+            f"> - `{run_dir_rel}/README.md` — stage receipts + narrative",
             "",
             "---",
             "",
@@ -312,19 +323,50 @@ class DeployStage(BaseStage):
             if rc != 0:
                 raise RuntimeError(f"worktree add failed: {err[:120]}")
 
-            # 3. Write the demo-runs file
-            demo_runs_dir = worktree_path / "demo-runs"
-            demo_runs_dir.mkdir(parents=True, exist_ok=True)
-            out_file = worktree_path / file_rel_path
-            out_file.write_text(body, encoding="utf-8")
+            # 3. Compute the real diff against the buggy template on
+            #    origin/main and write three files per run:
+            #      a) the fixed source (real code change)
+            #      b) a unified diff against the template
+            #      c) the receipts log
+            template_full = worktree_path / TEMPLATE_MIDDLEWARE_PATH
+            if template_full.exists():
+                template_src = template_full.read_text(encoding="utf-8")
+            else:
+                template_src = "# template not found on origin/main\n"
 
-            # 4. Commit
-            await run("git", "add", file_rel_path, cwd=worktree_path)
+            fixed_target_rel = f"{run_dir_rel}/auth/middleware.py"
+            diff_lines = list(
+                difflib.unified_diff(
+                    template_src.splitlines(keepends=True),
+                    FIXED_OAUTH_MIDDLEWARE.splitlines(keepends=True),
+                    fromfile=f"a/{TEMPLATE_MIDDLEWARE_PATH}",
+                    tofile=f"b/{fixed_target_rel}",
+                    n=3,
+                )
+            )
+            diff_text = "".join(diff_lines) or "(diff empty — template missing?)\n"
+
+            run_dir_abs = worktree_path / run_dir_rel
+            (run_dir_abs / "auth").mkdir(parents=True, exist_ok=True)
+            (run_dir_abs / "auth" / "middleware.py").write_text(
+                FIXED_OAUTH_MIDDLEWARE, encoding="utf-8"
+            )
+            (run_dir_abs / "fix.diff").write_text(diff_text, encoding="utf-8")
+            (run_dir_abs / "README.md").write_text(body, encoding="utf-8")
+
+            # 4. Commit — stage the whole run directory so git picks up
+            #    all three files, with git-friendly stats.
+            await run("git", "add", run_dir_rel, cwd=worktree_path)
             rc, _, err = await run(
                 "git",
                 "commit",
                 "-m",
-                f"demo(agentmes): AgentMES run for {task.id} ({task.intent[:48]})",
+                (
+                    f"demo(agentmes): TKT-001 {task.intent[:48]}\n\n"
+                    f"- {fixed_target_rel} (fixed middleware)\n"
+                    f"- {run_dir_rel}/fix.diff (unified diff)\n"
+                    f"- {run_dir_rel}/README.md (stage receipts)"
+                ),
                 cwd=worktree_path,
             )
             if rc != 0:
@@ -377,12 +419,27 @@ class DeployStage(BaseStage):
                 "metadata": {
                     "pr_url": pr_url,
                     "branch": branch,
-                    "committed_file": file_rel_path,
+                    "committed_files": [
+                        f"{run_dir_rel}/auth/middleware.py",
+                        f"{run_dir_rel}/fix.diff",
+                        f"{run_dir_rel}/README.md",
+                    ],
+                    "fixed_target": fixed_target_rel,
+                    "diff_lines": len(diff_lines),
                     "standby": "blaxel",
                     "status": "PASS",
                 },
                 "artifacts": [
-                    Artifact(type="pr", ref=pr_url, summary=f"↗ open PR — {branch}"),
+                    Artifact(
+                        type="pr",
+                        ref=pr_url,
+                        summary=f"↗ open PR — {branch} (3 files)",
+                    ),
+                    Artifact(
+                        type="file",
+                        ref=f"{pr_url}/files",
+                        summary="↗ PR files — see real middleware.py diff",
+                    ),
                 ],
             }
         except Exception as exc:  # noqa: BLE001 — demo must never crash
