@@ -435,13 +435,27 @@ class DeployStage(BaseStage):
         body = task.context_bundle.get("email_body", "(no body)")
         out_path = OUTPUTS_DIR / f"postmortem-{task.id}.md"
         out_path.write_text(body)
+        # Surface the saved file as a clickable viewer URL so operators
+        # can open the actual rendered postmortem in a new tab. The
+        # /output/{task_id} endpoint reads .demo/outputs/ from disk and
+        # renders with marked.js in the same dark theme as /artifact.
         events.append(
             await self._emit_event(
                 task=task,
                 agent="file",
                 action=f"saved postmortem to {out_path.name}",
-                metadata={"posted_to": "#incidents", "status": "PASS"},
-                artifacts=[Artifact(type="email", ref=str(out_path), summary="postmortem")],
+                metadata={
+                    "posted_to": "#incidents",
+                    "path": str(out_path),
+                    "status": "PASS",
+                },
+                artifacts=[
+                    Artifact(
+                        type="email",
+                        ref=f"/output/{task.id}",
+                        summary=f"↗ open delivered postmortem — {out_path.name}",
+                    ),
+                ],
             )
         )
         return events

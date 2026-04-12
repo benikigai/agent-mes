@@ -81,7 +81,13 @@ class DocumentStage(BaseStage):
                     "status": "PASS",
                 },
                 artifacts=[
-                    Artifact(type="memory", ref=lesson_id, summary="long-term lesson"),
+                    # Deep-link directly into the /redis dashboard page so
+                    # operators can inspect the backing key browser.
+                    Artifact(
+                        type="memory",
+                        ref=f"/redis?key=lesson:{lesson_id}",
+                        summary=f"↗ Redis dashboard — {lesson_id}",
+                    ),
                 ],
             )
         )
