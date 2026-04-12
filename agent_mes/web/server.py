@@ -193,6 +193,27 @@ state = WebState()
 ensure_artifacts_dir()
 
 
+@app.on_event("startup")
+async def _seed_redis_on_startup() -> None:
+    """Best-effort seed plushpalace into Redis at boot. Silent no-op if
+    Redis isn't running — the /redis dashboard renders an offline chip
+    in that case."""
+    try:
+        from agent_mes.integrations.redis_backend import (
+            connect_or_none,
+            seed_plushpalace,
+        )
+
+        client = connect_or_none()
+        if client is None:
+            return
+        counts = seed_plushpalace(client)
+        total = sum(counts.values())
+        print(f"  redis: seeded {total} plushpalace keys across {len(counts)} types")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  redis: seed failed — {type(exc).__name__}: {str(exc)[:80]}")
+
+
 @app.get("/api/state")
 async def get_state() -> dict[str, Any]:
     return {
@@ -205,12 +226,28 @@ async def get_state() -> dict[str, Any]:
 async def get_mode() -> dict[str, Any]:
     """Return which integration modes the server is currently running
     in. The browser reads this on boot to decorate the topbar chip."""
+    # Live Redis probe so the topbar can show a green "Redis: connected"
+    # state when a real Redis instance is reachable.
+    redis_connected = False
+    redis_dbsize = 0
+    try:
+        from agent_mes.integrations.redis_backend import connect_or_none
+
+        client = connect_or_none()
+        if client is not None:
+            redis_connected = True
+            redis_dbsize = int(client.dbsize())
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "real_pr": os.environ.get("AGENTMES_OPEN_REAL_PR") == "1",
         "blaxel_live": _HAS_BLAXEL_LIVE
         and os.environ.get("AGENTMES_BLAXEL_STUB") != "1",
         "plushpalace_context": _HAS_PLUSHPALACE
         and os.environ.get("AGENTMES_USE_PLUSHPALACE") != "0",
+        "redis_connected": redis_connected,
+        "redis_dbsize": redis_dbsize,
         "github_repo": "benikigai/agent-mes",
     }
 
@@ -405,15 +442,22 @@ _REDIS_DASHBOARD_CSS = """
 body { background:#0b0d12; color:#e6e6e6; font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;
        margin:0; padding:0; line-height:1.5; }
 .topbar { padding:16px 28px; border-bottom:1px solid #2a3040; background:#11141c;
-          display:flex; align-items:baseline; gap:16px; }
+          display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
 .topbar h1 { margin:0; color:#f87171; font-size:22px; font-weight:700; }
 .topbar .sub { color:#9aa3b2; font-size:13px; font-family:"JetBrains Mono",Menlo,monospace; }
+.conn-chip { font-family:"JetBrains Mono",Menlo,monospace; font-size:10px; font-weight:700;
+             letter-spacing:0.1em; text-transform:uppercase; padding:5px 10px; border-radius:4px;
+             border:1px solid; white-space:nowrap; }
+.conn-chip.live { color:#0b0d12; border-color:#4ade80; background:#4ade80;
+                  box-shadow:0 0 12px rgba(74,222,128,0.35); }
+.conn-chip.offline { color:#9aa3b2; border-color:#2a3040; background:#161922; }
 .topbar .src { margin-left:auto; color:#4dd0e1; text-decoration:none; font-size:12px;
                font-family:"JetBrains Mono",Menlo,monospace; }
 .topbar .src:hover { text-decoration:underline; }
-.layout { display:grid; grid-template-columns: 280px 1fr; min-height:calc(100vh - 80px); }
-.sidebar { background:#0e1118; border-right:1px solid #2a3040; padding:14px 0; overflow-y:auto; }
-.sidebar-section { padding:8px 18px; font-family:"JetBrains Mono",Menlo,monospace; font-size:10px;
+.layout { display:grid; grid-template-columns: 320px 1fr; min-height:calc(100vh - 80px); }
+.sidebar { background:#0e1118; border-right:1px solid #2a3040; padding:14px 0; overflow-y:auto;
+           max-height:calc(100vh - 80px); }
+.sidebar-section { padding:10px 18px 4px; font-family:"JetBrains Mono",Menlo,monospace; font-size:10px;
                    font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#6f7689;
                    border-top:1px solid #1f2330; margin-top:6px; }
 .sidebar-section:first-of-type { border-top:none; margin-top:0; }
@@ -423,11 +467,13 @@ body { background:#0b0d12; color:#e6e6e6; font-family:-apple-system,BlinkMacSyst
 .key-entry.active { background:#161922; border-left-color:#f87171; color:#f87171; }
 .key-title { color:#9aa3b2; font-size:10.5px; margin-top:2px; display:block; font-family:sans-serif;
              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.viewer { padding:24px 32px; overflow-y:auto; }
-.viewer h2 { color:#f87171; margin:0 0 6px; font-size:18px; }
+.viewer { padding:24px 32px; overflow-y:auto; max-height:calc(100vh - 80px); }
+.viewer h2 { color:#f87171; margin:0 0 6px; font-size:20px; }
 .viewer .key-meta { color:#9aa3b2; font-family:"JetBrains Mono",Menlo,monospace; font-size:12px;
                     margin-bottom:20px; padding-bottom:16px; border-bottom:1px dashed #2a3040; }
 .viewer .key-meta code { color:#fbbf24; background:#161922; padding:2px 6px; border-radius:3px; }
+.viewer .key-meta .cmd { color:#9aa3b2; margin-top:10px; }
+.viewer .key-meta .cmd strong { color:#4dd0e1; }
 .viewer pre { background:#11141c; border:1px solid #2a3040; border-radius:6px; padding:16px;
               overflow-x:auto; font-family:"JetBrains Mono",Menlo,monospace; font-size:12.5px;
               line-height:1.55; color:#e6e6e6; }
@@ -435,37 +481,12 @@ body { background:#0b0d12; color:#e6e6e6; font-family:-apple-system,BlinkMacSyst
 .breadcrumb { color:#6f7689; font-family:"JetBrains Mono",Menlo,monospace; font-size:12px; }
 .breadcrumb a { color:#9aa3b2; text-decoration:none; }
 .breadcrumb a:hover { color:#4dd0e1; }
-.stats-row { display:flex; gap:10px; flex-wrap:wrap; padding:10px 18px; }
-.stat { background:#161922; border:1px solid #2a3040; border-radius:4px; padding:6px 10px;
-        font-family:"JetBrains Mono",Menlo,monospace; font-size:10px; color:#9aa3b2; }
-.stat strong { color:#f87171; font-size:13px; display:block; }
+.stats-row { display:flex; gap:10px; flex-wrap:wrap; padding:10px 18px 14px; }
+.stat { background:#161922; border:1px solid #2a3040; border-radius:4px; padding:8px 12px;
+        font-family:"JetBrains Mono",Menlo,monospace; font-size:9px; color:#9aa3b2;
+        letter-spacing:0.08em; }
+.stat strong { color:#f87171; font-size:16px; display:block; margin-top:2px; letter-spacing:0; }
 """
-
-
-def _load_plushpalace_for_dashboard() -> dict[str, list[dict[str, Any]]]:
-    """Best-effort load of the plushpalace YAML data into a dict keyed by
-    entity type. Returns an empty dict if the plushpalace package or
-    data dir isn't available."""
-    try:
-        from pathlib import Path as _Path
-
-        from plushpalace.loader import load_all as _load_all
-
-        data_dir = _Path.home() / "code" / "plushpalace-world" / "data"
-        if not data_dir.exists():
-            return {}
-        raw = _load_all(data_dir)
-        out: dict[str, list[dict[str, Any]]] = {}
-        for kind, entities in raw.items():
-            out[kind] = []
-            for e in entities:
-                if hasattr(e, "model_dump"):
-                    out[kind].append(e.model_dump(mode="json"))
-                else:
-                    out[kind].append(dict(e.__dict__))
-        return out
-    except Exception:  # noqa: BLE001
-        return {}
 
 
 _PLUSHPALACE_YAML_FILES = {
@@ -484,75 +505,100 @@ _PLUSHPALACE_YAML_FILES = {
 
 @app.get("/redis")
 async def redis_dashboard(key: str | None = None) -> HTMLResponse:
-    """Render the plushpalace-backed Redis data as a dark-themed key
-    browser. Mimics Redis Insight's tree view: left sidebar lists all
-    keys grouped by entity type, main panel shows the selected key's
-    JSON value. Hyperlinked so each entity type section can be deep-
-    linked as ``/redis?key=incident:inc-2026-04-09``.
-    """
-    data = _load_plushpalace_for_dashboard()
-    total_keys = sum(len(v) for v in data.values())
+    """Live Redis key browser — connects to localhost:6379, SCANs every
+    key, GETs the selected value. Shows a "Connected" chip with the URL
+    + DBSIZE so the demo proves it's talking to a real Redis, not a
+    static fixture."""
+    from agent_mes.integrations.redis_backend import (
+        DEFAULT_REDIS_URL,
+        connect_or_none,
+        get_value,
+        group_by_type,
+        scan_all_keys,
+    )
 
-    # Build a flat list of (kind, id, doc) in deterministic order
-    all_entries: list[tuple[str, str, dict[str, Any]]] = []
-    for kind in sorted(data.keys()):
-        for doc in data[kind]:
-            eid = str(doc.get("id", "?"))
-            all_entries.append((kind, eid, doc))
+    client = connect_or_none()
+    if client is None:
+        page = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Redis — offline</title>
+<style>{_REDIS_DASHBOARD_CSS}</style></head><body>
+<div class="topbar"><h1>Redis</h1>
+<span class="conn-chip offline">● offline</span>
+<span class="sub">could not reach {DEFAULT_REDIS_URL}</span></div>
+<div class="empty" style="padding:60px 40px">
+  Redis is not reachable. Start it with <code>brew services start redis</code>
+  and re-seed via <code>python -m agent_mes.integrations.redis_backend</code>.
+</div></body></html>"""
+        return HTMLResponse(page)
 
-    # Resolve selected key
-    selected = None
-    for kind, eid, doc in all_entries:
-        key_str = f"{kind}:{eid}"
-        if key_str == key:
-            selected = (kind, eid, doc)
-            break
-    if selected is None and all_entries:
-        selected = all_entries[0]
+    redis_url = os.environ.get("AGENTMES_REDIS_URL") or DEFAULT_REDIS_URL
+    try:
+        dbsize = client.dbsize()
+    except Exception:  # noqa: BLE001
+        dbsize = 0
+    all_keys = scan_all_keys(client)
+    grouped = group_by_type(all_keys)
 
-    # Sidebar HTML
+    selected_key = key if key in all_keys else (all_keys[0] if all_keys else None)
+    selected_value = get_value(client, selected_key) if selected_key else None
+
+    # Sidebar — group by type, each link is a real Redis key
     sidebar_html: list[str] = []
-    last_kind = None
-    for kind, eid, doc in all_entries:
-        if kind != last_kind:
-            sidebar_html.append(
-                f'<div class="sidebar-section">{html.escape(kind)} '
-                f'({len(data.get(kind, []))})</div>'
-            )
-            last_kind = kind
-        key_str = f"{kind}:{eid}"
-        active = "active" if selected and selected[1] == eid and selected[0] == kind else ""
-        title = str(doc.get("title") or doc.get("name") or "")[:60]
+    for kind in sorted(grouped.keys()):
         sidebar_html.append(
-            f'<a class="key-entry {active}" href="/redis?key={html.escape(key_str)}">'
-            f'{html.escape(key_str)}'
-            f'{("<span class=\"key-title\">" + html.escape(title) + "</span>") if title else ""}'
-            "</a>"
+            f'<div class="sidebar-section">{html.escape(kind)} '
+            f'({len(grouped[kind])})</div>'
         )
+        for k in grouped[kind]:
+            val = get_value(client, k) or {}
+            title = str(
+                val.get("title") or val.get("name") or val.get("subject") or ""
+            )[:55]
+            active = "active" if k == selected_key else ""
+            title_html = (
+                f'<span class="key-title">{html.escape(title)}</span>'
+                if title
+                else ""
+            )
+            sidebar_html.append(
+                f'<a class="key-entry {active}" href="/redis?key={html.escape(k)}">'
+                f'{html.escape(k)}{title_html}</a>'
+            )
 
-    # Viewer HTML
-    if selected:
-        skind, sid, sdoc = selected
+    # Viewer panel — shows the selected key's value + the exact Redis
+    # commands that would retrieve it from the CLI
+    if selected_key and selected_value is not None:
+        skind = selected_key.split(":", 1)[0]
         yaml_file = _PLUSHPALACE_YAML_FILES.get(skind, f"data/{skind}.yaml")
         gh_url = f"https://github.com/benikigai/plushpalace-world/blob/main/{yaml_file}"
-        viewer_html = f'''
-            <div class="breadcrumb"><a href="/">← board</a> · Redis · {html.escape(skind)} · {html.escape(sid)}</div>
-            <h2>{html.escape(str(sdoc.get("title") or sdoc.get("name") or sid))}</h2>
-            <div class="key-meta">
-              <code>{html.escape(f"{skind}:{sid}")}</code> ·
-              source: <a href="{gh_url}" target="_blank" style="color:#4dd0e1">↗ {html.escape(yaml_file)}</a>
-            </div>
-            <pre><code>{html.escape(json.dumps(sdoc, indent=2, default=str))}</code></pre>
-        '''
-    else:
-        viewer_html = (
-            '<div class="empty">no plushpalace data loaded — is ~/code/plushpalace-world/data present?</div>'
+        title = str(
+            selected_value.get("title")
+            or selected_value.get("name")
+            or selected_value.get("subject")
+            or selected_key
         )
+        viewer_html = f'''
+            <div class="breadcrumb"><a href="/">← board</a> · Redis · {html.escape(skind)} · {html.escape(selected_key)}</div>
+            <h2>{html.escape(title)}</h2>
+            <div class="key-meta">
+              <code>{html.escape(selected_key)}</code> ·
+              source on GitHub: <a href="{gh_url}" target="_blank" style="color:#4dd0e1">↗ {html.escape(yaml_file)}</a>
+              <div class="cmd"><strong>redis-cli GET</strong> "{html.escape(selected_key)}"</div>
+            </div>
+            <pre><code>{html.escape(json.dumps(selected_value, indent=2, default=str))}</code></pre>
+        '''
+    elif not all_keys:
+        viewer_html = (
+            '<div class="empty">Redis is connected but empty. '
+            'Run <code>python -m agent_mes.integrations.redis_backend</code> to seed plushpalace.</div>'
+        )
+    else:
+        viewer_html = '<div class="empty">key not found in Redis</div>'
 
     stats_row = f"""
         <div class="stats-row">
-          <div class="stat">TOTAL KEYS<strong>{total_keys}</strong></div>
-          <div class="stat">ENTITY TYPES<strong>{len(data)}</strong></div>
+          <div class="stat">DBSIZE<strong>{dbsize}</strong></div>
+          <div class="stat">KEY TYPES<strong>{len(grouped)}</strong></div>
           <div class="stat">BACKEND<strong>PLUSHPALACE</strong></div>
         </div>
     """
@@ -565,8 +611,9 @@ async def redis_dashboard(key: str | None = None) -> HTMLResponse:
 </head><body>
 <div class="topbar">
   <h1>Redis</h1>
-  <span class="sub">agent memory + context surfaces</span>
-  <a class="src" href="https://github.com/benikigai/plushpalace-world" target="_blank">↗ source: plushpalace-world</a>
+  <span class="conn-chip live">● CONNECTED</span>
+  <span class="sub">{html.escape(redis_url)}</span>
+  <a class="src" href="https://github.com/benikigai/plushpalace-world" target="_blank">↗ data source: plushpalace-world</a>
 </div>
 <div class="layout">
   <div class="sidebar">
