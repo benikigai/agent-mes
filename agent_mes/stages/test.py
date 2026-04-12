@@ -9,7 +9,7 @@ import asyncio
 
 from agent_mes.artifacts import render_and_save
 from agent_mes.interfaces import BlaxelVerifierProtocol
-from agent_mes.schema import MESTask, StageEnum, StageEvent, TicketType
+from agent_mes.schema import Artifact, MESTask, StageEnum, StageEvent, TicketType
 from agent_mes.stages.base import BaseStage
 
 
@@ -42,10 +42,79 @@ class TestStage(BaseStage):
                 },
             )
         )
-        sandbox = await self.blaxel.create_sandbox(
-            task_id=task.id,
-            blast_radius=task.blast_radius.model_dump(),
-        )
+
+        # Real Blaxel call — create (or reuse) a per-ticket sandbox with a
+        # public preview URL. If anything goes wrong (credits, network, auth),
+        # fall back to the choreographed stub so the demo keeps moving.
+        sandbox = None
+        sandbox_err: str | None = None
+        try:
+            sandbox = await self.blaxel.create_sandbox(
+                task_id=task.id,
+                blast_radius=task.blast_radius.model_dump(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            sandbox_err = f"{type(exc).__name__}: {exc}"[:140]
+            # Fall back to the stub instance so the rest of the pipeline
+            # still runs. Emit a WARN event so the operator sees it.
+            from agent_mes.integrations.stubs.blaxel import StubBlaxelVerifier
+            self.blaxel = StubBlaxelVerifier()
+            sandbox = await self.blaxel.create_sandbox(
+                task_id=task.id,
+                blast_radius=task.blast_radius.model_dump(),
+            )
+            events.append(
+                await self._emit_event(
+                    task=task,
+                    agent="Blaxel",
+                    action=f"live API failed — fell back to local stub ({sandbox_err})",
+                    metadata={"error": sandbox_err, "status": "WARN"},
+                )
+            )
+
+        # If we got a real LiveSandbox, surface the URLs as artifacts so the
+        # card shows clickable links to the actual sandbox + console.
+        preview_url = getattr(sandbox, "preview_url", None)
+        dashboard_url = getattr(sandbox, "dashboard_url", None)
+        if preview_url or dashboard_url:
+            live_artifacts: list[Artifact] = []
+            if preview_url:
+                live_artifacts.append(
+                    Artifact(
+                        type="sandbox",
+                        ref=preview_url,
+                        summary=f"↗ live Blaxel sandbox — {sandbox.sandbox_name}",
+                    )
+                )
+            if dashboard_url:
+                live_artifacts.append(
+                    Artifact(
+                        type="sandbox",
+                        ref=dashboard_url,
+                        summary="↗ Blaxel console dashboard",
+                    )
+                )
+            events.append(
+                await self._emit_event(
+                    task=task,
+                    agent="Blaxel",
+                    action=f"LIVE sandbox deployed: {sandbox.sandbox_name}",
+                    metadata={
+                        "sandbox_id": sandbox.sandbox_name,
+                        "region": getattr(sandbox, "region", ""),
+                        "preview_url": preview_url or "",
+                        "dashboard_url": dashboard_url or "",
+                        "bl_status": getattr(sandbox, "bl_status", ""),
+                        "status": "PASS",
+                    },
+                    artifacts=live_artifacts,
+                )
+            )
+            # Stash the preview URL on the task so other stages / artifacts
+            # can reference it.
+            task.context_bundle["blaxel_preview_url"] = preview_url or ""
+            task.context_bundle["blaxel_sandbox_name"] = sandbox.sandbox_name
+
         await asyncio.sleep(0.75)
 
         events.append(

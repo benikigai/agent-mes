@@ -1,16 +1,26 @@
 """Stage 7 — Deploy & Maintain.
 
-For CODE tickets: open a real GitHub PR with the receipts as the body
-(or print the gh command if dry_run). For SIMPLE tickets: write the
-drafted email to .demo/outputs/. Both: log a monitoring breadcrumb to
-Redis (the standby Blaxel sandbox is mentioned in the receipts but not
-literally created).
+For CODE tickets: open a **real** GitHub PR against ``benikigai/agent-mes``
+with the receipts as the body and a new markdown file under ``demo-runs/``
+as the actual change. Uses a disposable git worktree so the running
+server's checkout (on whichever feature branch) is not disturbed.
+
+For SIMPLE tickets: write the drafted email to ``.demo/outputs/``.
+
+Both: log a monitoring breadcrumb to Redis (the standby Blaxel sandbox is
+mentioned in the receipts but not literally created).
+
+Real-PR behavior is gated on ``self.dry_run`` — server defaults to real
+PRs when ``AGENTMES_OPEN_REAL_PR`` is set; otherwise it emits a dry-run
+receipt that shows the exact ``gh pr create`` command that would have run.
 """
 
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -22,6 +32,9 @@ from agent_mes.schema import Artifact, HumanGate, MESTask, StageEnum, StageEvent
 from agent_mes.stages.base import BaseStage
 
 OUTPUTS_DIR = Path(".demo/outputs")
+# Resolve the repo root at import time so git worktree commands work no
+# matter what cwd the server was launched from.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 GateProvider = Callable[[HumanGate], Awaitable[bool]]
 
@@ -171,47 +184,160 @@ class DeployStage(BaseStage):
             )
             return events
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-            f.write(body)
-            body_path = f.name
+        # Real-PR path — create a disposable worktree off origin/main,
+        # commit a new file under demo-runs/, push, open PR, clean up.
+        pr_result = await self._open_real_pr(task, body)
+        events.append(
+            await self._emit_event(
+                task=task,
+                agent="GitHub",
+                action=pr_result["action"],
+                metadata=pr_result["metadata"],
+                artifacts=pr_result["artifacts"],
+            )
+        )
+        return events
+
+    async def _open_real_pr(self, task: MESTask, body: str) -> dict:
+        """Open a **real** GitHub PR.
+
+        Uses a disposable git worktree at ``/tmp/agentmes-pr-<id>`` so the
+        running server's checkout is never touched. Commits a new file
+        under ``demo-runs/{task_id}-{timestamp}.md`` whose body is the
+        full PR markdown (receipts + embedded diff). Branches off
+        ``origin/main`` to avoid dragging in any in-flight feature work.
+
+        Returns a dict ``{action, metadata, artifacts}`` the caller can
+        pass straight into ``_emit_event``. All errors are caught and
+        turned into a degraded WARN event so the demo keeps moving.
+        """
+        timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        run_id = f"{task.id}-{timestamp}".lower()
+        branch = f"agentmes-run/{run_id}"
+        worktree_path = Path(tempfile.gettempdir()) / f"agentmes-pr-{run_id}"
+        file_rel_path = f"demo-runs/{run_id}.md"
+        title = f"AgentMES: {task.intent[:60]}"
+
+        async def run(*cmd: str, cwd: Path | None = None) -> tuple[int, str, str]:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(cwd) if cwd else None,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await proc.communicate()
+            return proc.returncode or 0, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
         try:
-            result = subprocess.run(
-                [
+            # 1. Fetch origin so we branch off the latest main
+            await run("git", "fetch", "origin", "main", cwd=REPO_ROOT)
+            # 2. Create worktree + branch off origin/main
+            rc, _, err = await run(
+                "git",
+                "worktree",
+                "add",
+                "-b",
+                branch,
+                str(worktree_path),
+                "origin/main",
+                cwd=REPO_ROOT,
+            )
+            if rc != 0:
+                raise RuntimeError(f"worktree add failed: {err[:120]}")
+
+            # 3. Write the demo-runs file
+            demo_runs_dir = worktree_path / "demo-runs"
+            demo_runs_dir.mkdir(parents=True, exist_ok=True)
+            out_file = worktree_path / file_rel_path
+            out_file.write_text(body, encoding="utf-8")
+
+            # 4. Commit
+            await run("git", "add", file_rel_path, cwd=worktree_path)
+            rc, _, err = await run(
+                "git",
+                "commit",
+                "-m",
+                f"demo(agentmes): AgentMES run for {task.id} ({task.intent[:48]})",
+                cwd=worktree_path,
+            )
+            if rc != 0:
+                raise RuntimeError(f"commit failed: {err[:120]}")
+
+            # 5. Push the branch
+            rc, _, err = await run(
+                "git",
+                "push",
+                "-u",
+                "origin",
+                f"{branch}:{branch}",
+                cwd=worktree_path,
+            )
+            if rc != 0:
+                raise RuntimeError(f"push failed: {err[:120]}")
+
+            # 6. Open PR via gh
+            pr_body_file = Path(tempfile.gettempdir()) / f"agentmes-pr-body-{run_id}.md"
+            pr_body_file.write_text(body, encoding="utf-8")
+            try:
+                rc, stdout, err = await run(
                     "gh",
                     "pr",
                     "create",
                     "--repo",
                     self.github_repo,
+                    "--base",
+                    "main",
+                    "--head",
+                    branch,
                     "--title",
-                    f"AgentMES: {task.intent[:60]}",
+                    title,
                     "--body-file",
-                    body_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            pr_url = (
-                result.stdout.strip()
-                if result.returncode == 0
-                else f"(failed: {result.stderr[:80]})"
-            )
-        except Exception as e:
-            pr_url = f"(error: {e})"
-        finally:
-            Path(body_path).unlink(missing_ok=True)
+                    str(pr_body_file),
+                    cwd=worktree_path,
+                )
+                if rc != 0:
+                    raise RuntimeError(f"gh pr create failed: {err[:200]}")
+                pr_url = stdout.strip().splitlines()[-1] if stdout.strip() else ""
+            finally:
+                pr_body_file.unlink(missing_ok=True)
 
-        events.append(
-            await self._emit_event(
-                task=task,
-                agent="GitHub",
-                action="PR opened",
-                metadata={"pr_url": pr_url, "standby": "blaxel", "status": "PASS"},
-                artifacts=[Artifact(type="pr", ref=pr_url, summary="real PR")],
-            )
-        )
-        return events
+            return {
+                "action": f"PR opened → {pr_url}",
+                "metadata": {
+                    "pr_url": pr_url,
+                    "branch": branch,
+                    "committed_file": file_rel_path,
+                    "standby": "blaxel",
+                    "status": "PASS",
+                },
+                "artifacts": [
+                    Artifact(type="pr", ref=pr_url, summary=f"↗ open PR — {branch}"),
+                ],
+            }
+        except Exception as exc:  # noqa: BLE001 — demo must never crash
+            return {
+                "action": f"PR open failed — {type(exc).__name__}: {str(exc)[:80]}",
+                "metadata": {
+                    "error": f"{type(exc).__name__}: {exc}"[:200],
+                    "branch": branch,
+                    "status": "WARN",
+                },
+                "artifacts": [],
+            }
+        finally:
+            # Always remove the worktree — don't leave /tmp littered.
+            if worktree_path.exists():
+                try:
+                    await run(
+                        "git",
+                        "worktree",
+                        "remove",
+                        "--force",
+                        str(worktree_path),
+                        cwd=REPO_ROOT,
+                    )
+                except Exception:
+                    shutil.rmtree(worktree_path, ignore_errors=True)
 
     async def _deploy_email(self, task: MESTask) -> list[StageEvent]:
         events: list[StageEvent] = []
