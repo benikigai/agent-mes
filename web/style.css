@@ -949,6 +949,18 @@ body {
 .stage-summary-mark.warn  { color: var(--warn); }
 .stage-summary-mark.run   { color: var(--running); }
 
+.stage-summary-icon {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text);
+  flex-shrink: 0;
+  width: 13px;
+  text-align: center;
+}
+
+.stage-icon-review   { color: var(--review-accent); }
+.stage-icon-deploy   { color: var(--review-accent); }
+
 .stage-summary-name {
   font-weight: 700;
   letter-spacing: 0.07em;
