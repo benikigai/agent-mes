@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import html
 import json
+import os
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -31,6 +32,23 @@ from agent_mes.artifacts import (
 from agent_mes.demo.fake_slack import FAKE_SLACK
 from agent_mes.integrations.codex import CodexReplayBuilder
 from agent_mes.integrations.stubs.blaxel import StubBlaxelVerifier
+
+try:
+    from agent_mes.integrations.blaxel_live import BlaxelLiveVerifier  # noqa: F401
+    _HAS_BLAXEL_LIVE = True
+except Exception:  # noqa: BLE001
+    _HAS_BLAXEL_LIVE = False
+
+try:
+    from agent_mes.integrations.plushpalace_context import (
+        build_plushpalace_adapter_or_none,
+    )
+    _HAS_PLUSHPALACE = True
+except Exception:  # noqa: BLE001
+    _HAS_PLUSHPALACE = False
+
+    def build_plushpalace_adapter_or_none():  # type: ignore[misc]
+        return None
 from agent_mes.integrations.stubs.context_retriever import StubContextRetriever
 from agent_mes.integrations.stubs.redis_memory import StubRedisMemory
 from agent_mes.integrations.wordware import WordwarePlanner
@@ -123,9 +141,25 @@ def _build_pipeline(state: WebState, target_task_id: str) -> Pipeline:
     ``task_id:stage`` so Review's gate and Deploy's gate don't collide on
     the same asyncio.Event.
     """
-    redis = StubRedisMemory()
-    context = StubContextRetriever()
-    blaxel = StubBlaxelVerifier()
+    # Prefer the plushpalace-world synthetic context graph if the package
+    # is importable. The adapter satisfies BOTH the RedisMemoryProtocol and
+    # the ContextRetrieverProtocol — one object, two roles, pointing at the
+    # same YAML-backed store so hydration and verification stay consistent.
+    pp_adapter = build_plushpalace_adapter_or_none()
+    if pp_adapter is not None:
+        redis = pp_adapter
+        context = pp_adapter
+    else:
+        redis = StubRedisMemory()
+        context = StubContextRetriever()
+
+    # Prefer real Blaxel when the SDK is importable and AGENTMES_BLAXEL_STUB
+    # is not set. Any exception during the real path will be caught by
+    # TestStage — we still build the live verifier here optimistically.
+    if _HAS_BLAXEL_LIVE and os.environ.get("AGENTMES_BLAXEL_STUB") != "1":
+        blaxel = BlaxelLiveVerifier()
+    else:
+        blaxel = StubBlaxelVerifier()
 
     async def gate_provider(gate: HumanGate) -> bool:
         key = f"{target_task_id}:{gate.stage.value}"
@@ -138,7 +172,14 @@ def _build_pipeline(state: WebState, target_task_id: str) -> Pipeline:
         test=TestStage(blaxel=blaxel),
         review=ReviewStage(redis=redis, context=context, gate_provider=gate_provider),
         document=DocumentStage(redis=redis),
-        deploy=DeployStage(redis=redis, dry_run=True, gate_provider=gate_provider),
+        deploy=DeployStage(
+            redis=redis,
+            # Real PRs land when AGENTMES_OPEN_REAL_PR=1 is set in the
+            # server's environment. Default is dry-run so rehearsals
+            # don't spam the repo.
+            dry_run=os.environ.get("AGENTMES_OPEN_REAL_PR") != "1",
+            gate_provider=gate_provider,
+        ),
         events_callback=state.broker.publish,
     )
     return pipeline
