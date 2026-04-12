@@ -706,6 +706,7 @@ body {
 .stack-badge.stack-blaxel   { color: #4dd0e1; border-color: rgba(77, 208, 225, 0.5); background: rgba(77, 208, 225, 0.08); }
 .stack-badge.stack-github   { color: #9aa3b2; border-color: rgba(154, 163, 178, 0.5); background: rgba(154, 163, 178, 0.08); }
 .stack-badge.stack-human    { color: #fbbf24; border-color: rgba(251, 191, 36, 0.5); background: rgba(251, 191, 36, 0.08); }
+.stack-badge.stack-plushpalace { color: #f472b6; border-color: rgba(244, 114, 182, 0.5); background: rgba(244, 114, 182, 0.08); }
 
 /* ─── cards column ─── */
 .cards {

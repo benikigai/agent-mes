@@ -89,9 +89,17 @@
           <span class="stack-badge stack-github">GitHub</span>
           <div class="sponsor-role">
             <strong>PR pipeline endpoint.</strong>
-            Stage 7 (Deploy) assembles the PR body from every stage event as receipts, then <code>gh pr create</code>s against <code>benikigai/agent-mes</code>. CODE tickets only — the human ship-it gate blocks before this runs.
+            Stage 7 (Deploy) assembles the PR body from every stage event as receipts, then <code>gh pr create</code>s against <code>benikigai/agent-mes</code>. CODE tickets only — the human ship-it gate blocks before this runs. Real PRs land files under <code>demo-runs/</code>.
           </div>
           <div class="sponsor-stages">→ stage <strong>7</strong></div>
+        </div>
+        <div class="sponsor-row">
+          <span class="stack-badge stack-plushpalace">plushpalace-world</span>
+          <div class="sponsor-role">
+            <strong>Synthetic context graph — the <em>world</em> the pipeline operates inside.</strong>
+            A separate repo (<a href="https://github.com/benikigai/plushpalace-world" target="_blank" rel="noopener">github.com/benikigai/plushpalace-world</a>) holding 10 typed entity YAML files (people, products, vendors, repos, incidents, postmortems, code, customers, emails, lessons) for the fictional PlushPalace Co. This is what Redis Agent Memory and Redis Context Surfaces query — the "drift catch" in Stage 5 is powered by pre-seeded contradictions inside these YAML files.
+          </div>
+          <div class="sponsor-stages">→ feeds <strong>2</strong>, <strong>5</strong>, <strong>6</strong></div>
         </div>
       </div>
     </section>
