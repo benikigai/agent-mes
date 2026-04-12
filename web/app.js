@@ -12,6 +12,16 @@ const STAGE_LABELS = {
   plan: "PLAN", design: "DESIGN", build: "BUILD", test: "TEST",
   review: "REVIEW", document: "DOCUMENT", deploy: "DEPLOY",
 };
+// Icons match the lane-header icons (index.html lane-icon spans)
+const STAGE_ICONS = {
+  plan: "☑",
+  design: "✦",
+  build: "⚒",
+  test: "⌕",
+  review: "◉",
+  document: "✎",
+  deploy: "⏱",
+};
 const SYMBOLS = {
   PASS: "✓", FAIL: "✗", KILLED: "✗", DRIFT: "⚠", WARN: "⚠", RUN: "⏳",
 };
@@ -174,6 +184,11 @@ function renderStageDetails(task, stage, stageEvents) {
   const mark = el("span", `stage-summary-mark ${markCls}`, SYMBOLS[worstStatus] || "✓");
   summary.appendChild(mark);
 
+  // Stage icon — matches the lane header icon so each collapsed row is
+  // visually tied back to its lane
+  summary.appendChild(
+    el("span", `stage-summary-icon stage-icon-${stage}`, STAGE_ICONS[stage] || "")
+  );
   summary.appendChild(el("span", "stage-summary-name", STAGE_LABELS[stage]));
   summary.appendChild(el("span", "stage-summary-count", `${stageEvents.length}`));
 
