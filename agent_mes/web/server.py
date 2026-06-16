@@ -340,6 +340,14 @@ async def feedback(task_id: str, payload: dict[str, Any]) -> dict[str, str]:
     text = (payload.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="feedback text is required")
+    if len(text) > 2000:
+        raise HTTPException(status_code=400, detail="feedback text too long (max 2000 chars)")
+    # Neutralize HTML at the trust boundary. This is anonymous, unauthenticated
+    # input on the public deployment, and it flows into multiple markdown sinks:
+    # the web artifact pages, /output, the GitHub PR body, and the terminal
+    # renderer. Escaping here defends every downstream renderer at once; the web
+    # pages additionally DOMPurify-sanitize at render time (defense in depth).
+    text = html.escape(text)
 
     # 1. Cancel whatever pipeline task is in flight for this ticket.
     pt = state.pipeline_tasks.pop(task_id, None)
@@ -647,14 +655,15 @@ async def view_output(task_id: str) -> HTMLResponse:
 <meta charset="utf-8">
 <title>{html.escape(task_id)} output — AgentMES</title>
 <style>{_ARTIFACT_VIEWER_CSS}</style>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="/static/vendor/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi"></script>
+<script src="/static/vendor/purify.min.js" integrity="sha384-JEyTNhjM6R1ElGoJns4U2Ln4ofPcqzSsynQkmEc/KGy6336qAZl70tDLufbkla+3"></script>
 </head><body>
 <div class="breadcrumb"><a href="/">← board</a> · {html.escape(task_id)} · delivered output (<code>.demo/outputs/postmortem-{html.escape(task_id)}.md</code>)</div>
 {content}
 <script>
   const RAW = {raw_literal};
   if (RAW !== null) {{
-    document.getElementById("content").innerHTML = marked.parse(RAW);
+    document.getElementById("content").innerHTML = DOMPurify.sanitize(marked.parse(RAW));
   }}
 </script>
 </body></html>"""
@@ -682,14 +691,15 @@ async def view_artifact(task_id: str, stage: str) -> HTMLResponse:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{html.escape(title)} — AgentMES artifact</title>
 <style>{_ARTIFACT_VIEWER_CSS}</style>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="/static/vendor/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi"></script>
+<script src="/static/vendor/purify.min.js" integrity="sha384-JEyTNhjM6R1ElGoJns4U2Ln4ofPcqzSsynQkmEc/KGy6336qAZl70tDLufbkla+3"></script>
 </head><body>
 <div class="breadcrumb"><a href="/">← board</a> · {html.escape(task_id)} · {html.escape(stage)}</div>
 {content_html}
 <script>
   const RAW = {inline_md_literal};
   if (RAW !== null) {{
-    document.getElementById("content").innerHTML = marked.parse(RAW);
+    document.getElementById("content").innerHTML = DOMPurify.sanitize(marked.parse(RAW));
   }}
 </script>
 </body></html>"""
