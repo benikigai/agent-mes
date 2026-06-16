@@ -863,6 +863,7 @@ body {
 }
 .card.merged { border-color: var(--merged); }
 .card.killed { border-color: var(--killed); }
+.card.rejected, .card.expired { border-color: var(--fail); }
 
 .card-title {
   font-weight: 700;
@@ -1099,6 +1100,29 @@ body {
 
 .approve-btn:hover {
   background: #fcc95f;
+}
+
+/* Terminal reject — closes the ticket (distinct from Reject + Re-plan below) */
+.reject-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--fail, #f0726a);
+  border: 1px solid var(--fail, #f0726a);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.reject-btn:hover {
+  background: var(--fail, #f0726a);
+  color: #0b0d12;
 }
 
 /* Reject + Re-plan feedback box on blocked cards */

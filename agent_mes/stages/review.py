@@ -6,17 +6,22 @@ Emits a HumanGate (real input() unless AGENTMES_AUTO_APPROVE=1).
 from __future__ import annotations
 
 import asyncio
-import os
-from typing import Awaitable, Callable
 
 from agent_mes.artifacts import render_and_save
-from agent_mes.interfaces import ContextRetrieverProtocol, RedisMemoryProtocol
-from agent_mes.schema import Artifact, HumanGate, MESTask, StageEnum, StageEvent, TicketType
+from agent_mes.interfaces import (
+    ContextRetrieverProtocol,
+    HumanGateProvider,
+    RedisMemoryProtocol,
+)
+from agent_mes.schema import (
+    Artifact,
+    GateDecision,
+    HumanGate,
+    MESTask,
+    StageEnum,
+    StageEvent,
+)
 from agent_mes.stages.base import BaseStage
-
-# Type alias for the optional browser-driven gate hook.
-# Receives the HumanGate, returns True on approval / False on rejection or timeout.
-GateProvider = Callable[[HumanGate], Awaitable[bool]]
 
 
 class ReviewStage(BaseStage):
@@ -27,7 +32,7 @@ class ReviewStage(BaseStage):
         self,
         redis: RedisMemoryProtocol,
         context: ContextRetrieverProtocol,
-        gate_provider: GateProvider | None = None,
+        gate_provider: HumanGateProvider | None = None,
     ) -> None:
         self.redis = redis
         self.context = context
@@ -115,21 +120,43 @@ class ReviewStage(BaseStage):
                 )
             )
 
-            approved = await self._await_human(gate)
+            decision = await self._await_human(gate)
+            approved = decision == GateDecision.APPROVED
             gate.approved = approved
             gate.approver = "ben" if approved else None
             task.human_gates.append(gate)
-            task.status = "running"
 
+            if not approved:
+                # A rejected or expired review HALTS the pipeline — the ticket
+                # does NOT proceed to Document/Deploy and never merges. (This
+                # was the no-op bug: the old code set status="running" here and
+                # the rejected fix sailed through to merged.) A reject-with-
+                # feedback re-plan is a different path — /api/feedback cancels
+                # and rebuilds the task instead of resolving this gate.
+                terminal = "rejected" if decision == GateDecision.REJECTED else "expired"
+                events.append(
+                    await self._emit_event(
+                        task=task,
+                        agent="HUMAN",
+                        action=(
+                            "rejected — fix not approved, ticket closed"
+                            if decision == GateDecision.REJECTED
+                            else "review gate expired — no decision, ticket closed"
+                        ),
+                        metadata={"status": "FAIL", "decision": decision.value},
+                    )
+                )
+                events[-1].artifacts.append(render_and_save(task, "review"))
+                task.status = terminal
+                return events
+
+            task.status = "running"
             events.append(
                 await self._emit_event(
                     task=task,
                     agent="HUMAN",
-                    action="approved" if approved else "rejected",
-                    metadata={
-                        "approver": gate.approver or "none",
-                        "status": "PASS" if approved else "FAIL",
-                    },
+                    action="approved",
+                    metadata={"approver": gate.approver, "status": "PASS"},
                 )
             )
         else:
@@ -146,18 +173,3 @@ class ReviewStage(BaseStage):
         events[-1].artifacts.append(render_and_save(task, "review"))
         await asyncio.sleep(0.6)
         return events
-
-    async def _await_human(self, gate: HumanGate) -> bool:
-        """Three modes, in priority order:
-        1. If gate_provider is set (web mode), call it and return its result
-        2. If AGENTMES_AUTO_APPROVE=1 env var is set, auto-approve (test mode)
-        3. Otherwise, prompt for keyboard input via stdin (terminal mode)
-        """
-        if self.gate_provider is not None:
-            return await self.gate_provider(gate)
-        if os.environ.get("AGENTMES_AUTO_APPROVE") == "1":
-            await asyncio.sleep(0.1)
-            return True
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, input, gate.prompt)
-        return response.strip().lower() in ("y", "yes")
