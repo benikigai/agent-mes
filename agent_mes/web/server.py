@@ -18,7 +18,10 @@ import os
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, HTTPException
+import time
+from collections import defaultdict, deque
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
@@ -34,6 +37,12 @@ from agent_mes.integrations.codex import CodexReplayBuilder
 from agent_mes.integrations.stubs.blaxel import StubBlaxelVerifier
 
 try:
+    # Probe the REAL Blaxel SDK, not just our wrapper. blaxel_live.py imports
+    # the SDK lazily inside a method, so the wrapper module imports fine even
+    # when the SDK is absent — which made _HAS_BLAXEL_LIVE always True and let
+    # /api/mode claim blaxel_live:true while TestStage silently ran the stub.
+    # Gating on the real SDK keeps the badge AND the verifier selection honest.
+    import blaxel.core  # noqa: F401
     from agent_mes.integrations.blaxel_live import BlaxelLiveVerifier  # noqa: F401
     _HAS_BLAXEL_LIVE = True
 except Exception:  # noqa: BLE001
@@ -61,7 +70,12 @@ from agent_mes.stages.document import DocumentStage
 from agent_mes.stages.plan import PlanStage
 from agent_mes.stages.review import ReviewStage
 from agent_mes.stages.test import TestStage
-from agent_mes.web.events import EventBroker, _state_payload, _task_payload
+from agent_mes.web.events import (
+    EventBroker,
+    SubscriberLimitExceeded,
+    _state_payload,
+    _task_payload,
+)
 from agent_mes.web.gates import GateRegistry
 
 # Repo root → /Users/elias/code/blaxel-codex-redis-hackathon
@@ -185,6 +199,74 @@ def _build_pipeline(state: WebState, target_task_id: str) -> Pipeline:
     return pipeline
 
 
+# ─── rate limiting ──────────────────────────────────────────────────────────
+
+# App-level limiter on the mutation endpoints. The public deployment sits behind
+# a Cloudflare tunnel, so every request arrives from 127.0.0.1 — request.client
+# is useless for per-visitor limiting. Cloudflare sets CF-Connecting-IP to the
+# real visitor IP; we key on that (falling back through XFF then the peer).
+# A Cloudflare front-door rule could layer on top, but this is self-contained
+# and protects the Mini regardless of the front door.
+RATE_LIMIT_MAX = 30  # mutations per window per visitor (generous for live demo)
+RATE_LIMIT_WINDOW = 60.0  # seconds
+
+
+class RateLimiter:
+    """Sliding-window per-key limiter. Memory-bounded by opportunistic prune."""
+
+    def __init__(self, max_events: int, window_s: float) -> None:
+        self.max_events = max_events
+        self.window_s = window_s
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+
+    def allow(self, key: str, now: float) -> bool:
+        cutoff = now - self.window_s
+        dq = self._hits[key]
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+        if len(dq) >= self.max_events:
+            return False
+        dq.append(now)
+        if len(self._hits) > 4096:  # bound memory under a key-flood
+            for k in [k for k, d in self._hits.items() if not d or d[-1] < cutoff]:
+                del self._hits[k]
+        return True
+
+
+_rate_limiter = RateLimiter(RATE_LIMIT_MAX, RATE_LIMIT_WINDOW)
+
+
+_LOOPBACK = {"127.0.0.1", "::1"}
+
+
+def _client_key(request: Request) -> str:
+    """Identify the visitor for rate limiting.
+
+    Forwarding headers (CF-Connecting-IP / X-Forwarded-For) are only honored
+    when the immediate peer is loopback — i.e. the request came through the
+    local cloudflared tunnel or tailscale-serve, which set those headers
+    truthfully. A direct client could spoof them, so for any non-loopback
+    peer we key on the real peer address and ignore the headers entirely.
+    """
+    peer = request.client.host if request.client else "unknown"
+    if peer in _LOOPBACK:
+        forwarded = (
+            request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        )
+        if forwarded:
+            return forwarded
+    return peer
+
+
+def rate_limit(request: Request) -> None:
+    """FastAPI dependency — 429s a visitor who exceeds the mutation budget."""
+    if not _rate_limiter.allow(_client_key(request), time.monotonic()):
+        raise HTTPException(
+            status_code=429, detail="rate limit exceeded — slow down a moment"
+        )
+
+
 # ─── FastAPI app ────────────────────────────────────────────────────────────
 
 
@@ -254,12 +336,10 @@ async def get_mode() -> dict[str, Any]:
 
 async def _broadcast_state() -> None:
     """Push the current task list to every SSE subscriber."""
-    payload = _state_payload(state.tasks)
-    for q in list(state.broker._subscribers):  # noqa: SLF001
-        await q.put(payload)
+    state.broker.broadcast(_state_payload(state.tasks))
 
 
-@app.post("/api/launch/{task_id}")
+@app.post("/api/launch/{task_id}", dependencies=[Depends(rate_limit)])
 async def launch_one(task_id: str) -> dict[str, str]:
     """Launch a single ticket through the pipeline.
 
@@ -288,7 +368,7 @@ async def launch_one(task_id: str) -> dict[str, str]:
     return {"status": "launched", "task_id": task_id}
 
 
-@app.post("/api/reset")
+@app.post("/api/reset", dependencies=[Depends(rate_limit)])
 async def reset_board() -> dict[str, str]:
     """Cancel any in-flight pipeline tasks, rebuild fresh MESTasks, wipe
     stale stage artifacts, and broadcast the reset state to every SSE
@@ -308,7 +388,7 @@ async def reset_board() -> dict[str, str]:
     return {"status": "reset"}
 
 
-@app.post("/api/approve/{task_id}")
+@app.post("/api/approve/{task_id}", dependencies=[Depends(rate_limit)])
 async def approve(task_id: str) -> dict[str, str]:
     """Approve whichever human gate the task is currently parked at.
 
@@ -324,7 +404,7 @@ async def approve(task_id: str) -> dict[str, str]:
     return {"status": "approved", "task_id": task_id, "stage": stage}
 
 
-@app.post("/api/feedback/{task_id}")
+@app.post("/api/feedback/{task_id}", dependencies=[Depends(rate_limit)])
 async def feedback(task_id: str, payload: dict[str, Any]) -> dict[str, str]:
     """Reject the current Review gate and re-route back to Plan with the
     operator's feedback folded into the re-run.
@@ -392,8 +472,13 @@ async def feedback(task_id: str, payload: dict[str, Any]) -> dict[str, str]:
 
 
 @app.get("/api/events")
-async def events() -> EventSourceResponse:
-    queue = state.broker.subscribe()
+async def events(request: Request) -> EventSourceResponse:
+    try:
+        queue = state.broker.subscribe(_client_key(request))
+    except SubscriberLimitExceeded as exc:
+        raise HTTPException(
+            status_code=503, detail="too many live connections — retry shortly"
+        ) from exc
 
     async def gen() -> AsyncIterator[dict[str, str]]:
         try:
