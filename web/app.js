@@ -124,11 +124,16 @@ function renderCard(task) {
     card.appendChild(renderStageDetails(task, stage, byStage[stage]));
   }
 
-  // Inline approve button + feedback box if blocked at the review gate
+  // Inline gate controls when blocked at a human gate (Review or Deploy):
+  // approve (proceed) · reject (close the ticket) · reject + re-plan (rework).
   if (task.status === "blocked") {
     const btn = el("button", "approve-btn", `[APPROVE ${task.id}]`);
-    btn.addEventListener("click", () => approveTask(task.id));
+    btn.addEventListener("click", () => approveTask(task.id, task.current_stage));
     card.appendChild(btn);
+
+    const rejectBtn = el("button", "reject-btn", "✗ Reject — close ticket");
+    rejectBtn.addEventListener("click", () => rejectTask(task.id, task.current_stage));
+    card.appendChild(rejectBtn);
 
     const box = el("div", "feedback-box");
     box.appendChild(el("div", "feedback-label", "or send back to Plan with feedback"));
@@ -382,8 +387,22 @@ async function resetBoard() {
   }
 }
 
-async function approveTask(taskId) {
-  await fetch(`/api/approve/${taskId}`, { method: "POST" });
+async function approveTask(taskId, stage) {
+  await fetch(`/api/approve/${taskId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage }),
+  });
+}
+
+async function rejectTask(taskId, stage) {
+  // Terminal reject — closes the ticket. Distinct from sendFeedback, which
+  // rejects-and-replans. The {stage} lets the server 409 a stale click.
+  await fetch(`/api/reject/${taskId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage }),
+  });
 }
 
 async function sendFeedback(taskId, text) {
@@ -413,14 +432,18 @@ function updateStateLabel() {
   const running = tasks.filter((t) => t.status === "running");
   const blocked = tasks.filter((t) => t.status === "blocked");
   const merged = tasks.filter((t) => t.status === "merged");
+  const closed = tasks.filter((t) => ["rejected", "expired", "killed"].includes(t.status));
   if (blocked.length) {
     setStateLabel(`awaiting approval — click [APPROVE] on ${blocked[0].id}`, "running");
   } else if (running.length) {
     setStateLabel(`${running.map((t) => t.id).join(", ")} in flight`, "running");
   } else if (merged.length === tasks.length) {
     setStateLabel("complete — all tickets merged ✓", "complete");
-  } else if (merged.length) {
-    setStateLabel(`${merged.length}/${tasks.length} merged — start the next ticket`);
+  } else if (merged.length || closed.length) {
+    const parts = [];
+    if (merged.length) parts.push(`${merged.length} merged`);
+    if (closed.length) parts.push(`${closed.length} closed (rejected/expired)`);
+    setStateLabel(`${parts.join(" · ")} — start the next ticket`);
   } else {
     setStateLabel("ready — click Start on a ticket");
   }

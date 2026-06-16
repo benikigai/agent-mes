@@ -62,7 +62,7 @@ from agent_mes.integrations.stubs.context_retriever import StubContextRetriever
 from agent_mes.integrations.stubs.redis_memory import StubRedisMemory
 from agent_mes.integrations.wordware import WordwarePlanner
 from agent_mes.pipeline import Pipeline
-from agent_mes.schema import HumanGate, MESTask, TicketType
+from agent_mes.schema import GateDecision, HumanGate, MESTask, TicketType
 from agent_mes.stages.build import BuildStage
 from agent_mes.stages.deploy import DeployStage
 from agent_mes.stages.design import DesignStage
@@ -175,7 +175,7 @@ def _build_pipeline(state: WebState, target_task_id: str) -> Pipeline:
     else:
         blaxel = StubBlaxelVerifier()
 
-    async def gate_provider(gate: HumanGate) -> bool:
+    async def gate_provider(gate: HumanGate) -> GateDecision:
         key = f"{target_task_id}:{gate.stage.value}"
         return await state.gates.wait(key, timeout=300.0)
 
@@ -388,20 +388,47 @@ async def reset_board() -> dict[str, str]:
     return {"status": "reset"}
 
 
-@app.post("/api/approve/{task_id}", dependencies=[Depends(rate_limit)])
-async def approve(task_id: str) -> dict[str, str]:
-    """Approve whichever human gate the task is currently parked at.
+def _resolve_gate_stage(task_id: str, expected_stage: str | None) -> str:
+    """Validate a gate decision targets the task's current gate.
 
-    The card can block at Stage 5 (Review) or Stage 7 (Deploy & Maintain).
-    We look up the task's current_stage to construct the same namespaced
-    gate key the stage's gate_provider is waiting on.
-    """
+    Returns the stage key to resolve. 404 if the task is unknown, 409 if the
+    caller named a stage that isn't where the card is currently parked — guards
+    against a stale click resolving the wrong gate (e.g. approving Review when
+    the card has already advanced to Deploy)."""
     target = next((t for t in state.tasks if t.id == task_id), None)
     if target is None:
         raise HTTPException(status_code=404, detail=f"unknown task {task_id}")
     stage = target.current_stage.value
+    if expected_stage is not None and expected_stage != stage:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{task_id} is at '{stage}', not '{expected_stage}'",
+        )
+    return stage
+
+
+@app.post("/api/approve/{task_id}", dependencies=[Depends(rate_limit)])
+async def approve(task_id: str, payload: dict[str, Any] | None = None) -> dict[str, str]:
+    """Approve whichever human gate the task is currently parked at.
+
+    The card can block at Stage 5 (Review) or Stage 7 (Deploy & Maintain). An
+    optional ``{"stage": "..."}`` body lets the browser assert which gate it
+    means; a mismatch 409s rather than resolving the wrong one.
+    """
+    stage = _resolve_gate_stage(task_id, (payload or {}).get("stage"))
     state.gates.approve(f"{task_id}:{stage}")
     return {"status": "approved", "task_id": task_id, "stage": stage}
+
+
+@app.post("/api/reject/{task_id}", dependencies=[Depends(rate_limit)])
+async def reject(task_id: str, payload: dict[str, Any] | None = None) -> dict[str, str]:
+    """Reject the human gate the task is parked at — the ticket reaches a
+    terminal 'rejected' state and does NOT merge. This is distinct from
+    /api/feedback, which rejects-and-replans (cancel + rebuild from Plan).
+    """
+    stage = _resolve_gate_stage(task_id, (payload or {}).get("stage"))
+    state.gates.reject(f"{task_id}:{stage}")
+    return {"status": "rejected", "task_id": task_id, "stage": stage}
 
 
 @app.post("/api/feedback/{task_id}", dependencies=[Depends(rate_limit)])

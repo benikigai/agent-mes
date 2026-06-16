@@ -10,7 +10,16 @@ real implementations on the vish/redis-blaxel branch build against these.
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Awaitable, Callable, Protocol, runtime_checkable
+
+from agent_mes.schema import GateDecision, HumanGate
+
+# The browser-driven (or stdin) human-gate hook. Given the HumanGate the stage
+# is parked at, returns how the human resolved it. Replaces the two duplicate
+# ``GateProvider = Callable[[HumanGate], Awaitable[bool]]`` aliases that used to
+# live in review.py and deploy.py — and upgrades bool → GateDecision so reject
+# and timeout are distinguishable.
+HumanGateProvider = Callable[[HumanGate], Awaitable[GateDecision]]
 
 
 # ─── Sandbox handle (returned by BlaxelVerifier.create_sandbox) ─────────────
