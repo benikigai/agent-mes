@@ -12,3 +12,7 @@ build/
 .idea/
 .vscode/
 .demo/artifacts/
+# Runtime-generated demo scratch — written by anonymous visitors on the public
+# deployment. Never track: it would auto-push visitor content to GitHub.
+.demo/memory_log.jsonl
+.demo/outputs/
