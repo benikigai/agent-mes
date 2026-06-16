@@ -11,7 +11,7 @@ import asyncio
 import os
 from typing import Awaitable, Callable
 
-from agent_mes.schema import MESTask, StageEnum, StageEvent
+from agent_mes.schema import TERMINAL_STATUSES, MESTask, StageEnum, StageEvent
 from agent_mes.stages.base import BaseStage
 
 EventsCallback = Callable[[StageEvent, MESTask], None] | Callable[[StageEvent, MESTask], Awaitable[None]]
@@ -63,7 +63,10 @@ class Pipeline:
                 task.status = "killed"
                 return task
 
-            if task.status == "killed":
+            # A stage may drive the task to a terminal state — killed (failure),
+            # rejected (human declined a gate), or expired (gate timed out).
+            # Halt immediately; the task must not advance or merge.
+            if task.status in TERMINAL_STATUSES:
                 return task
 
             # Hold the card in the just-finished lane long enough for the

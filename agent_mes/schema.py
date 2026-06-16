@@ -44,6 +44,17 @@ class StageResult(StrEnum):
     FAIL = "fail"
     BLOCK_FOR_HUMAN = "block_for_human"
     KILLED = "killed"
+    REJECTED = "rejected"
+
+
+class GateDecision(StrEnum):
+    """How a human resolved a HumanGate — the tristate the gate mechanism
+    carries end to end. REJECTED and TIMED_OUT are distinct so a deliberate
+    reject and an unattended timeout render (and transition) differently."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    TIMED_OUT = "timed_out"
 
 
 # ─── Building blocks ────────────────────────────────────────────────────────
@@ -123,4 +134,33 @@ class MESTask(BaseModel):
     human_gates: list[HumanGate] = Field(default_factory=list)
 
     current_stage: StageEnum = StageEnum.PLAN
-    status: Literal["pending", "running", "blocked", "merged", "killed"] = "pending"
+    status: Literal[
+        "pending", "running", "blocked", "merged", "killed", "rejected", "expired"
+    ] = "pending"
+
+
+# ─── Task lifecycle state machine ───────────────────────────────────────────
+# The bipartite human/agent machine made inspectable: every task.status and the
+# states it may legally move to next. Agents drive pending → running → … through
+# the throughput stages; humans resolve the `blocked` gates into merged
+# (approve), rejected (reject), or expired (gate timeout). Terminal states have
+# no successors. ``pipeline.run`` halts the moment a task reaches one.
+
+TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {"merged", "killed", "rejected", "expired"}
+)
+
+TRANSITIONS: dict[str, frozenset[str]] = {
+    "pending": frozenset({"running"}),
+    "running": frozenset({"blocked", "merged", "killed", "rejected", "expired"}),
+    "blocked": frozenset({"running", "killed", "rejected", "expired"}),
+    "merged": frozenset(),
+    "killed": frozenset(),
+    "rejected": frozenset(),
+    "expired": frozenset(),
+}
+
+
+def can_transition(frm: str, to: str) -> bool:
+    """True if a task may legally move from status ``frm`` to status ``to``."""
+    return to in TRANSITIONS.get(frm, frozenset())
