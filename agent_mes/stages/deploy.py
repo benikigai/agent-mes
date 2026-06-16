@@ -20,28 +20,31 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import difflib
-import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Awaitable, Callable
-
 from agent_mes.artifacts import render_and_save
 from agent_mes.integrations.demo_patches import (
     FIXED_OAUTH_MIDDLEWARE,
     TEMPLATE_MIDDLEWARE_PATH,
 )
-from agent_mes.interfaces import RedisMemoryProtocol
-from agent_mes.schema import Artifact, HumanGate, MESTask, StageEnum, StageEvent, TicketType
+from agent_mes.interfaces import HumanGateProvider, RedisMemoryProtocol
+from agent_mes.schema import (
+    Artifact,
+    GateDecision,
+    HumanGate,
+    MESTask,
+    StageEnum,
+    StageEvent,
+    TicketType,
+)
 from agent_mes.stages.base import BaseStage
 
 OUTPUTS_DIR = Path(".demo/outputs")
 # Resolve the repo root at import time so git worktree commands work no
 # matter what cwd the server was launched from.
 REPO_ROOT = Path(__file__).resolve().parents[2]
-
-GateProvider = Callable[[HumanGate], Awaitable[bool]]
 
 
 class DeployStage(BaseStage):
@@ -53,7 +56,7 @@ class DeployStage(BaseStage):
         redis: RedisMemoryProtocol,
         github_repo: str = "benikigai/agent-mes",
         dry_run: bool = False,
-        gate_provider: GateProvider | None = None,
+        gate_provider: HumanGateProvider | None = None,
     ) -> None:
         self.redis = redis
         self.github_repo = github_repo
@@ -87,24 +90,34 @@ class DeployStage(BaseStage):
                 )
             )
 
-            approved = await self._await_human(gate)
+            decision = await self._await_human(gate)
+            approved = decision == GateDecision.APPROVED
             gate.approved = approved
             gate.approver = "ben" if approved else None
             task.human_gates.append(gate)
-            task.status = "running"
 
             if not approved:
+                # Reject = operator declined the ship; expired = nobody decided
+                # before the gate timed out. Either way the PR is not opened and
+                # the ticket reaches a distinct terminal state (not merged).
+                terminal = "rejected" if decision == GateDecision.REJECTED else "expired"
                 events.append(
                     await self._emit_event(
                         task=task,
                         agent="HUMAN",
-                        action="deploy rejected — PR not opened, task closed",
-                        metadata={"status": "FAIL"},
+                        action=(
+                            "deploy rejected — PR not opened, ticket closed"
+                            if decision == GateDecision.REJECTED
+                            else "ship-it gate expired — PR not opened, ticket closed"
+                        ),
+                        metadata={"status": "FAIL", "decision": decision.value},
                     )
                 )
                 events[-1].artifacts.append(render_and_save(task, "deploy"))
-                task.status = "killed"
+                task.status = terminal
                 return events
+
+            task.status = "running"
 
             events.append(
                 await self._emit_event(
@@ -516,20 +529,6 @@ class DeployStage(BaseStage):
             )
         )
         return events
-
-    async def _await_human(self, gate: HumanGate) -> bool:
-        """Block until the browser POSTs /api/approve/{task_id} (via the
-        gate_provider) or stdin input arrives in terminal mode. Mirrors
-        ReviewStage._await_human so the same web gate mechanism drives
-        both human gates."""
-        if self.gate_provider is not None:
-            return await self.gate_provider(gate)
-        if os.environ.get("AGENTMES_AUTO_APPROVE") == "1":
-            await asyncio.sleep(0.1)
-            return True
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, input, gate.prompt)
-        return response.strip().lower() in ("y", "yes")
 
     def _render_pr_body(self, task: MESTask) -> str:
         lines = [
