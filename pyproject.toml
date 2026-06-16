@@ -23,6 +23,19 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
 ]
+# Real Redis backend for the /redis dashboard and the long-term memory store.
+# Optional: the app degrades to stub memory + an "offline" dashboard chip when
+# absent. Declared here so `uv sync`/`pip` install it deterministically when
+# requested instead of silently pruning an undeclared dependency.
+redis = [
+    "redis>=5.0",
+]
+# Real Blaxel sandbox verifier (live microVMs). NOT installed on the public
+# zero-token demo — TestStage falls back to the deterministic stub when the SDK
+# is absent, and /api/mode reports blaxel_live:false accordingly.
+live = [
+    "blaxel",
+]
 
 [project.scripts]
 agent-mes = "agent_mes.cli:app"
